@@ -18,9 +18,19 @@ const MAX_MESSAGES = 40;
 const MAX_CHARS = 4000;
 
 async function readBody(req) {
-  if (req.body && typeof req.body === "object") return req.body; // Vercel pre-parses
-  let raw = "";
-  for await (const chunk of req) raw += chunk;
+  // Vercel populates req.body — as an object for parsed JSON, but as a raw
+  // string on some content types. Handle both BEFORE touching the stream:
+  // Vercel has already consumed it, so iterating it there never emits "end"
+  // and the function hangs until the platform timeout.
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === "string") return req.body ? JSON.parse(req.body) : {};
+    if (Buffer.isBuffer(req.body)) return req.body.length ? JSON.parse(req.body.toString("utf8")) : {};
+    return req.body;
+  }
+  // Vite's dev middleware does not body-parse, so read the stream there.
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const raw = Buffer.concat(chunks.map(Buffer.from)).toString("utf8");
   return raw ? JSON.parse(raw) : {};
 }
 

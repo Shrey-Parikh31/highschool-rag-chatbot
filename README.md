@@ -76,6 +76,20 @@ users"*. An alias keeps working; a pinned id becomes a maintenance chore.
 The free tier also returns intermittent `503 UNAVAILABLE` under load, so
 `api/chat.js` retries once and then fails over to the secondary model.
 
+### Free-tier quota (important)
+
+The Gemini free tier allows **20 requests per day, per model, per project**
+(`GenerateRequestsPerDayPerProjectPerModel-FreeTier`). That is enough to build
+and test, but not enough for a classroom — one student can exhaust it.
+
+Because the cap is *per model*, the primary/fallback pair gives roughly double
+the daily budget, and `api/chat.js` fails over immediately on a 429 rather than
+retrying a model whose quota is already gone.
+
+For real use, enable billing on the Google Cloud project behind the API key.
+Flash-class models are inexpensive; the daily request cap is the binding
+constraint, not the token cost.
+
 ## Commands
 
 | Command | What it does |

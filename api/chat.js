@@ -118,16 +118,21 @@ export default async function handler(req, res) {
     });
 
   try {
-    // Retry the primary once, then fail over. Observed 503s on gemini-flash-latest
-    // three times in ten minutes on the free tier — enough to ruin a live demo.
+    // 503 means the model is momentarily busy, so a retry helps.
+    // 429 means the daily quota for THAT model is gone, and the free tier allows
+    // only 20 requests/day/model — so retrying it just burns a second request for
+    // nothing. Because the quota is per-model, failing over to a different model
+    // is what actually buys capacity.
     let used = MODEL;
     let upstream = await call(used);
-    const busy = (r) => r.status === 429 || r.status === 503;
-    if (busy(upstream)) {
+    const overloaded = (r) => r.status === 503;
+    const exhausted = (r) => r.status === 429;
+
+    if (overloaded(upstream)) {
       await new Promise((r) => setTimeout(r, 1000));
       upstream = await call(used);
     }
-    if (busy(upstream) && FALLBACK !== MODEL) {
+    if ((overloaded(upstream) || exhausted(upstream)) && FALLBACK !== MODEL) {
       used = FALLBACK;
       upstream = await call(used);
     }
@@ -135,8 +140,13 @@ export default async function handler(req, res) {
     const data = await upstream.json();
     if (!upstream.ok) {
       // Surface the real upstream reason (quota, bad key, safety) but never the key.
+      const raw = data?.error?.message || "Upstream API error.";
+      const msg =
+        upstream.status === 429
+          ? "Daily free-tier quota is used up for today. The Gemini free tier allows 20 requests per day per model. Enable billing on the Google Cloud project to lift it."
+          : raw;
       res.statusCode = upstream.status;
-      return res.end(JSON.stringify({ error: data?.error?.message || "Upstream API error." }));
+      return res.end(JSON.stringify({ error: msg }));
     }
 
     const text = data.candidates?.[0]?.content?.parts

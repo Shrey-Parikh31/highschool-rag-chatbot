@@ -50,6 +50,9 @@ export default function App() {
   const [loading, setLoading]   = useState(false);
   const [showDot, setShowDot]   = useState(true);
   const [passcode, setPasscode] = useState("");
+  // Inline instead of window.prompt(): native prompts are blocked in sandboxed
+  // frames and look like a browser error in a live demo.
+  const [askCode, setAskCode]   = useState(false);
 
   const bottomRef   = useRef(null);
   const textareaRef = useRef(null);
@@ -294,17 +297,48 @@ export default function App() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {askCode && (
+              // A real <form>: Enter-to-submit comes free from the platform, and
+              // the button makes it discoverable instead of Enter-only.
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const code = new FormData(e.target).get("code").trim();
+                  if (!code) return;
+                  setPasscode(code);
+                  setRole("teacher");   // provisional — the server has the final say
+                  setAskCode(false);
+                }}
+                style={{ display: "flex", gap: 4, alignItems: "center" }}
+              >
+                <input
+                  name="code"
+                  type="password"
+                  autoFocus
+                  placeholder="Staff passcode"
+                  aria-label="Staff passcode"
+                  onKeyDown={(e) => { if (e.key === "Escape") setAskCode(false); }}
+                  style={{
+                    width: 130, padding: "5px 10px", borderRadius: 20, fontSize: 12,
+                    fontFamily: "'Nunito', sans-serif", border: "1.5px solid #3B82F6",
+                    background: "#fff", color: "#1C1C1E",
+                  }}
+                />
+                <button type="submit" className="role-pill" style={{ border: "1.5px solid #3B82F6", background: "#2563EB", color: "#fff" }}>
+                  Unlock
+                </button>
+              </form>
+            )}
             <span style={{ fontSize: 12, color: "#9CA3AF", marginRight: 4 }}>Sign in as:</span>
             {[["student", "👩‍🎓"], ["teacher", "👩‍🏫"]].map(([r, emoji]) => (
               <button
                 key={r}
                 className="role-pill"
                 onClick={() => {
-                  if (r === "student") { setPasscode(""); setRole("student"); return; }
+                  if (r === "student") { setPasscode(""); setRole("student"); setAskCode(false); return; }
                   // The pill is a claim, not a grant — api/chat.js verifies the
                   // passcode on every request and downgrades silently if it's wrong.
-                  const code = window.prompt("Staff passcode:");
-                  if (code) { setPasscode(code); setRole("teacher"); }
+                  setAskCode(true);
                 }}
                 style={{
                   border: `1.5px solid ${role === r ? "#3B82F6" : "#E5E7EB"}`,

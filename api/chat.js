@@ -93,15 +93,28 @@ export default async function handler(req, res) {
     return res.end(JSON.stringify({ error: "Unknown subject." }));
   }
 
+  // Bound every upstream call. Without this a hung Gemini request hangs the
+  // whole function until Vercel kills it at 60s, and the caller just sees a
+  // dead connection. Three chained calls must still fit inside that budget.
+  const UPSTREAM_TIMEOUT_MS = 12000;
+
   const call = (model) =>
     fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents,
         generationConfig: { maxOutputTokens: 1000 },
       }),
+    }).catch((err) => {
+      // Normalise a timeout/abort into a 503-shaped result so the retry and
+      // failover path treats a hang exactly like an overloaded model.
+      if (err.name === "TimeoutError" || err.name === "AbortError") {
+        return { ok: false, status: 503, json: async () => ({ error: { message: `${model} timed out` } }) };
+      }
+      throw err;
     });
 
   try {

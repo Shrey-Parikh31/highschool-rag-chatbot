@@ -29,7 +29,7 @@ export default defineConfig([
   {
     // api/ runs on Vercel's Node runtime and vite.config.js runs on Node too,
     // so they get Node globals (process, Buffer) rather than browser ones.
-    files: ['api/**/*.js', 'vite.config.js'],
+    files: ['api/**/*.js', 'scripts/**/*.js', 'vite.config.js'],
     languageOptions: { globals: globals.node },
   },
 ])

@@ -30,14 +30,25 @@ the browser only ever talks to `/api/chat`.
 ### How teacher access actually works
 
 Role is **not** decided by the client. The UI's Student/Teacher pill is a
-request; `api/chat.js` verifies `TEACHER_PASSCODE` on every call and serves the
-student prompt if it doesn't match.
+request; the server verifies `TEACHER_PASSCODE` on every call and serves the
+student scope if it doesn't match.
 
-This matters more than it sounds. If staff data were placed in the prompt and
-the model merely *instructed* not to reveal it, a student could talk it out with
-a jailbreak. Instead, for a student request the grades and teacher notes are
-never added to the payload at all — so there is nothing to leak. Run
-`npm test` to check that property.
+The boundary is enforced at **retrieval**, not in the prompt. A student's
+request searches only that subject's `--shared` store, so staff documents are
+never read, never chunked into context, and cannot appear in an answer. The
+student prompt therefore contains no "do not reveal grades" instruction — there
+is nothing present to withhold.
+
+That distinction is visible in the API response. Asked for the class average:
+
+```
+student  sources: ["math-syllabus.txt"]                          -> "the documents don't include that"
+teacher  sources: ["math-staff-notes.txt", "math-syllabus.txt"]  -> "class average 74%, lowest 41%"
+```
+
+The student answer is not a refusal the model chose. It is the only answer
+available from the documents it was allowed to search. Run `npm test` to check
+that scopes never collide.
 
 The shared passcode is a demo-grade stand-in for real accounts. Swapping it for
 per-user auth means changing how `role` is derived in `api/chat.js` — the
@@ -96,8 +107,19 @@ constraint, not the token cost.
 |---|---|
 | `npm run dev` | Frontend + API on one dev server |
 | `npm run build` | Production build to `dist/` |
-| `npm test` | Verifies staff data cannot reach a student prompt |
+| `npm test` | Verifies staff stores are never in a student's scope |
+| `npm run seed` | Loads demo course documents into the stores |
 | `npm run lint` | ESLint |
+
+## Adding course materials
+
+Sign in as staff (the Teacher pill, then the passcode) and use **Upload course
+materials**. Pick the subject, choose who may see the file, and upload a PDF,
+DOCX, TXT, MD or HTML file up to 4MB. Answers cite the document they came from.
+
+A subject with no uploaded documents says so and refuses to invent a syllabus or
+a date — that is deliberate. `npm run seed` loads demo content for maths,
+physics and English so there is something to demonstrate.
 
 ## Deploying
 
@@ -107,16 +129,18 @@ Environment Variables. Never commit `.env`.
 
 ## Status
 
-Working: secured backend, server-enforced roles, model failover, deployment.
+Working: secured backend, retrieval over uploaded documents, role enforced at
+retrieval, staff upload UI, answer citations, model failover, deployment.
 
-Next: replace the hardcoded data in `api/_data.js` with real uploaded documents
-(Gemini File Search), teacher upload UI, per-user auth, markdown rendering and
-chat persistence.
+Next: per-user accounts replacing the shared passcode, a document manager for
+staff (list and delete what has been uploaded), streamed replies, and chat
+history that survives a refresh.
 
 ### Known limitations
 
-- Course data is hardcoded demo content. Only Mathematics, Physics and English
-  have real entries; the other nine subjects generate placeholder syllabi that
-  look real but are invented. This is the main reason for the RAG work above.
-- Replies render as plain text, so markdown `**bold**` shows literal asterisks.
+- Teacher access is one shared passcode, not per-user accounts. Everyone on
+  staff uses the same secret and it cannot be revoked individually.
+- Uploads are capped at 4MB by Vercel's request body limit. Large textbooks
+  need splitting.
+- There is no way to list or delete uploaded documents from the UI yet.
 - Chat history is lost on refresh and when switching subjects.

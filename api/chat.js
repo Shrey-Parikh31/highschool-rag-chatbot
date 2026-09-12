@@ -2,7 +2,9 @@
 // Also runs under `npm run dev` via the dev-api plugin in vite.config.js,
 // so local and production execute this exact file.
 
-import { buildSystemPrompt } from "./_data.js";
+import { buildSystemPrompt, isSubject } from "./_data.js";
+import { storesForRole } from "./_stores.js";
+import { readBody, verifyRole, json } from "./_http.js";
 
 // Auto-tracking alias: Google repoints it as new Flash models ship, so the app
 // does not go stale. Pin an exact id in GEMINI_MODEL if a release regresses.
@@ -16,51 +18,26 @@ const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || "gemini-flash-lite-latest"
 
 const MAX_MESSAGES = 40;
 const MAX_CHARS = 4000;
-
-async function readBody(req) {
-  // Vercel populates req.body — as an object for parsed JSON, but as a raw
-  // string on some content types. Handle both BEFORE touching the stream:
-  // Vercel has already consumed it, so iterating it there never emits "end"
-  // and the function hangs until the platform timeout.
-  if (req.body !== undefined && req.body !== null) {
-    if (typeof req.body === "string") return req.body ? JSON.parse(req.body) : {};
-    if (Buffer.isBuffer(req.body)) return req.body.length ? JSON.parse(req.body.toString("utf8")) : {};
-    return req.body;
-  }
-  // Vite's dev middleware does not body-parse, so read the stream there.
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks.map(Buffer.from)).toString("utf8");
-  return raw ? JSON.parse(raw) : {};
-}
+const UPSTREAM_TIMEOUT_MS = 20000;
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.statusCode = 405;
-    return res.end(JSON.stringify({ error: "Method not allowed" }));
-  }
-
-  res.setHeader("Content-Type", "application/json");
+  if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    res.statusCode = 500;
-    return res.end(JSON.stringify({ error: "GEMINI_API_KEY is not set on the server." }));
-  }
+  if (!apiKey) return json(res, 500, { error: "GEMINI_API_KEY is not set on the server." });
 
   let body;
   try {
     body = await readBody(req);
   } catch {
-    res.statusCode = 400;
-    return res.end(JSON.stringify({ error: "Malformed JSON body." }));
+    return json(res, 400, { error: "Malformed JSON body." });
   }
 
   const { subjectId, messages, teacherPasscode } = body;
 
+  if (!isSubject(subjectId)) return json(res, 400, { error: "Unknown subject." });
   if (!Array.isArray(messages) || messages.length === 0 || messages.length > MAX_MESSAGES) {
-    res.statusCode = 400;
-    return res.end(JSON.stringify({ error: "Invalid message history." }));
+    return json(res, 400, { error: "Invalid message history." });
   }
 
   // Normalise rather than trust: drop anything that isn't a well-formed turn.
@@ -68,46 +45,40 @@ export default async function handler(req, res) {
   for (const m of messages) {
     const text = typeof m?.text === "string" ? m.text.slice(0, MAX_CHARS) : null;
     if (!text) continue;
-    contents.push({
-      role: m.from === "user" ? "user" : "model",
-      parts: [{ text }],
-    });
+    contents.push({ role: m.from === "user" ? "user" : "model", parts: [{ text }] });
   }
-  if (contents.length === 0) {
-    res.statusCode = 400;
-    return res.end(JSON.stringify({ error: "No usable messages." }));
-  }
+  if (contents.length === 0) return json(res, 400, { error: "No usable messages." });
 
-  // The access boundary. The client's claimed role is only a request; the server
-  // decides. Without the passcode, staff data is never placed in the payload at
-  // all, so no amount of prompt injection can surface it.
-  // ponytail: shared passcode, swap for per-user auth when there are real accounts.
-  const expected = process.env.TEACHER_PASSCODE;
-  const role = expected && teacherPasscode === expected ? "teacher" : "student";
+  // The access boundary. The client's claimed role is only a request.
+  const role = verifyRole(teacherPasscode);
 
-  // buildSystemPrompt owns subject validation (returns null on anything unknown),
-  // so there is exactly one place that decides what a valid subject is.
-  const system = buildSystemPrompt(role, subjectId);
-  if (!system) {
-    res.statusCode = 400;
-    return res.end(JSON.stringify({ error: "Unknown subject." }));
+  // ...and it is enforced at RETRIEVAL: a student request carries only the
+  // shared store, so staff documents are never searched and cannot enter the
+  // model's context. This is why the prompt needs no "don't reveal" rule.
+  let stores = [];
+  try {
+    stores = await storesForRole(apiKey, subjectId, role);
+  } catch (err) {
+    return json(res, 502, { error: `Could not reach the document store: ${err.message}` });
   }
 
-  // Bound every upstream call. Without this a hung Gemini request hangs the
-  // whole function until Vercel kills it at 60s, and the caller just sees a
-  // dead connection. Three chained calls must still fit inside that budget.
-  const UPSTREAM_TIMEOUT_MS = 12000;
+  const system = buildSystemPrompt(role, subjectId, stores.length > 0);
+
+  const payload = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents,
+    generationConfig: { maxOutputTokens: 1200 },
+  };
+  if (stores.length) {
+    payload.tools = [{ file_search: { file_search_store_names: stores } }];
+  }
 
   const call = (model) =>
     fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents,
-        generationConfig: { maxOutputTokens: 1000 },
-      }),
+      body: JSON.stringify(payload),
     }).catch((err) => {
       // Normalise a timeout/abort into a 503-shaped result so the retry and
       // failover path treats a hang exactly like an overloaded model.
@@ -145,25 +116,29 @@ export default async function handler(req, res) {
         upstream.status === 429
           ? "Daily free-tier quota is used up for today. The Gemini free tier allows 20 requests per day per model. Enable billing on the Google Cloud project to lift it."
           : raw;
-      res.statusCode = upstream.status;
-      return res.end(JSON.stringify({ error: msg }));
+      return json(res, upstream.status, { error: msg });
     }
 
-    const text = data.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text || "")
-      .join("")
-      .trim();
+    const candidate = data.candidates?.[0];
+    const text = candidate?.content?.parts?.map((p) => p.text || "").join("").trim();
 
     if (!text) {
-      const reason = data.candidates?.[0]?.finishReason;
-      res.statusCode = 502;
-      return res.end(JSON.stringify({ error: `Model returned no text${reason ? ` (${reason})` : ""}.` }));
+      const reason = candidate?.finishReason;
+      return json(res, 502, { error: `Model returned no text${reason ? ` (${reason})` : ""}.` });
     }
 
-    res.statusCode = 200;
-    return res.end(JSON.stringify({ text, role, model: used }));
+    // Which documents the answer was actually grounded in. Showing these is the
+    // difference between "trust me" and "here's where I read it".
+    const sources = [
+      ...new Set(
+        (candidate?.groundingMetadata?.groundingChunks || [])
+          .map((c) => c.retrievedContext?.title)
+          .filter(Boolean)
+      ),
+    ];
+
+    return json(res, 200, { text, role, model: used, sources, grounded: stores.length > 0 });
   } catch (err) {
-    res.statusCode = 502;
-    return res.end(JSON.stringify({ error: `Could not reach the model: ${err.message}` }));
+    return json(res, 502, { error: `Could not reach the model: ${err.message}` });
   }
 }

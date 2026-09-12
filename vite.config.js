@@ -8,11 +8,16 @@ function devApi(env) {
   return {
     name: "dev-api",
     configureServer(server) {
-      server.middlewares.use("/api/chat", async (req, res, next) => {
+      server.middlewares.use(async (req, res, next) => {
+        const route = (req.url || "").split("?")[0];
+        if (!route.startsWith("/api/")) return next();
+        const name = route.slice(5).replace(/[^a-z0-9-]/gi, "");
+        if (!name) return next();
+
         Object.assign(process.env, env); // .env is not on process.env under Vite
         try {
-          // Cache-bust so edits to api/chat.js apply without restarting the server.
-          const mod = await server.ssrLoadModule(`/api/chat.js?t=${Date.now()}`);
+          // Cache-bust so edits to the handler apply without restarting the server.
+          const mod = await server.ssrLoadModule(`/api/${name}.js?t=${Date.now()}`);
           await mod.default(req, res);
         } catch (err) {
           server.config.logger.error(`[dev-api] ${err.stack || err.message}`);

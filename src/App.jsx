@@ -59,6 +59,115 @@ async function sendToAI(messages, subjectId, teacherPasscode) {
   return data;
 }
 
+/**
+ * Staff-only document upload.
+ *
+ * The file goes up as the raw request body with metadata in the query string,
+ * so the server needs no multipart parser. The passcode rides in a header and
+ * is re-verified server-side — this panel being on screen grants nothing.
+ */
+function TeacherUpload({ passcode }) {
+  const [subjectId, setSubjectId] = useState(SUBJECTS[0].id);
+  const [scope, setScope]         = useState("shared");
+  const [busy, setBusy]           = useState(false);
+  const [result, setResult]       = useState(null);
+  const fileRef = useRef(null);
+
+  const upload = async () => {
+    const file = fileRef.current?.files?.[0];
+    if (!file || busy) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const qs = new URLSearchParams({ subjectId, scope, filename: file.name });
+      const res = await fetch(`/api/upload?${qs}`, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream", "x-teacher-passcode": passcode },
+        body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+      setResult({ ok: true, text: `“${data.filename}” added to ${data.subject} — visible to ${data.visibleTo}.` });
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (err) {
+      setResult({ ok: false, text: err.message });
+    }
+    setBusy(false);
+  };
+
+  const selectStyle = {
+    padding: "10px 12px", borderRadius: 12, border: "2px solid #E4DEF8",
+    fontSize: 15.5, fontFamily: "inherit", fontWeight: 700, background: "#fff", color: "#16161D",
+  };
+
+  return (
+    <section style={{ marginTop: 36, background: "#fff", border: "2px solid #E4DEF8", borderRadius: 20, padding: "22px 24px" }}>
+      <div className="display" style={{ fontSize: 21, fontWeight: 600, marginBottom: 4 }}>📁 Upload course materials</div>
+      <p style={{ fontSize: 15.5, color: "#6B6885", fontWeight: 600, marginBottom: 18 }}>
+        PDF, DOCX, TXT, MD or HTML, up to 4MB. The assistant answers only from what is uploaded here.
+      </p>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 13.5, fontWeight: 800, color: "#7C7A94" }}>
+          SUBJECT
+          <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} style={selectStyle}>
+            {SUBJECTS.map((s) => <option key={s.id} value={s.id}>{s.icon} {s.full}</option>)}
+          </select>
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 13.5, fontWeight: 800, color: "#7C7A94" }}>
+          WHO CAN SEE IT
+          <select value={scope} onChange={(e) => setScope(e.target.value)} style={selectStyle}>
+            <option value="shared">🎒 All students</option>
+            <option value="staff">🔒 Staff only</option>
+          </select>
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 13.5, fontWeight: 800, color: "#7C7A94" }}>
+          FILE
+          <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md,.html" style={{ ...selectStyle, fontWeight: 600, maxWidth: 280 }} />
+        </label>
+
+        <button
+          onClick={upload}
+          disabled={busy}
+          className="role-pill"
+          style={{
+            border: "2px solid #4F46E5", background: busy ? "#A5B4FC" : "#4F46E5",
+            color: "#fff", padding: "11px 22px", fontSize: 16, alignSelf: "flex-end",
+            cursor: busy ? "wait" : "pointer",
+          }}
+        >
+          {busy ? "Processing…" : "Upload"}
+        </button>
+      </div>
+
+      {busy && (
+        <p style={{ marginTop: 14, fontSize: 15, color: "#6B6885", fontWeight: 600 }}>
+          Reading and indexing the document — a large PDF can take up to a minute.
+        </p>
+      )}
+      {result && (
+        <p style={{
+          marginTop: 14, fontSize: 15.5, fontWeight: 700,
+          color: result.ok ? "#047857" : "#B91C1C",
+          background: result.ok ? "#ECFDF5" : "#FEF2F2",
+          border: `2px solid ${result.ok ? "#A7F3D0" : "#FECACA"}`,
+          borderRadius: 12, padding: "11px 15px",
+        }}>
+          {result.ok ? "✅ " : "⚠️ "}{result.text}
+        </p>
+      )}
+
+      {scope === "staff" && (
+        <p style={{ marginTop: 12, fontSize: 14.5, color: "#92400E", fontWeight: 700 }}>
+          🔒 Staff-only files are stored separately and are never searched when a student asks a question.
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function App() {
   const [role, setRole]         = useState("student");
   const [chatOpen, setChatOpen] = useState(false);
@@ -102,7 +211,7 @@ export default function App() {
       const reply = await sendToAI(updated, subject.id, passcode);
       // The server reports the role it actually granted; trust that, not the pill.
       if (reply.role !== role) setRole(reply.role);
-      setMessages([...updated, { from: "bot", text: reply.text }]);
+      setMessages([...updated, { from: "bot", text: reply.text, sources: reply.sources }]);
     } catch (err) {
       console.error(err);
       setMessages([...updated, { from: "bot", text: err.message, isError: true }]);
@@ -387,10 +496,14 @@ export default function App() {
                 <button type="submit" className="role-pill" style={{ border: "2px solid #4F46E5", background: "#4F46E5", color: "#fff" }}>
                   Unlock
                 </button>
+                <button type="button" className="role-pill" onClick={() => setAskCode(false)} style={{ border: "2px solid #E4DEF8", background: "#fff", color: "#6B6885" }}>
+                  Cancel
+                </button>
               </form>
             )}
-            <span style={{ fontSize: 14, color: "#8A87A0", fontWeight: 600 }}>I'm a</span>
-            {[["student", "🎒", "Student"], ["teacher", "🍎", "Teacher"]].map(([r, emoji, label]) => (
+            {/* While authenticating, the pills are noise and overflow the nav. */}
+            {!askCode && <span style={{ fontSize: 14, color: "#8A87A0", fontWeight: 600 }}>I&apos;m a</span>}
+            {!askCode && [["student", "🎒", "Student"], ["teacher", "🍎", "Teacher"]].map(([r, emoji, label]) => (
               <button
                 key={r}
                 className="role-pill"
@@ -469,6 +582,8 @@ export default function App() {
               </span>
             </div>
           )}
+
+          {role === "teacher" && <TeacherUpload passcode={passcode} />}
         </div>
       </div>
 
@@ -547,6 +662,19 @@ export default function App() {
                         // raw HTML, so a prompt-injected <script> stays inert text.
                         ? <div className="md"><Markdown>{m.text}</Markdown></div>
                         : m.text}
+
+                      {/* Where the answer came from. This is the difference between
+                          "trust me" and "here is the document I read it in". */}
+                      {m.sources?.length > 0 && (
+                        <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid #DDD6F3", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                          <span style={{ fontSize: 12.5, color: "#7C7A94", fontWeight: 800 }}>SOURCE</span>
+                          {m.sources.map((src) => (
+                            <span key={src} style={{ fontSize: 13, background: "#fff", border: "1px solid #DDD6F3", borderRadius: 999, padding: "3px 10px", fontWeight: 700, color: "#4C4A63" }}>
+                              📄 {src}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

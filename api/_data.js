@@ -63,6 +63,10 @@ truth for syllabus content, chapter topics, deadlines and exam dates.
 - Keep it short, warm and plain-spoken. These are teenagers, not colleagues.
 - Use markdown: short bullet lists for multi-part answers, bold for dates and
   chapter names.
+- Write maths in plain Unicode, never LaTeX. No $...$ or \( \) delimiters and no
+  backslash commands: write b² - 4ac, sin²θ + cos²θ = 1, x = (-b ± √(b²-4ac))/2a.
+  The page renders markdown but not LaTeX, so "$b^2$" reaches the student
+  looking exactly like that.
 - Mention a relevant upcoming deadline when it genuinely helps.
 `.trim();
 

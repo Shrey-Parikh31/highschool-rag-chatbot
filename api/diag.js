@@ -63,13 +63,31 @@ export default async function handler(req, res) {
         createdName: created?.name || created?.error?.message?.slice(0, 120),
         listedAfterCreate: (listed.fileSearchStores || []).map((x) => x.displayName),
       };
-      if (created?.name) {
+      // x-diag-keep leaves the probe store behind so the other environment can
+      // try to see it — that tells us whether the isolation is symmetric.
+      if (created?.name && req.headers["x-diag-keep"] !== "1") {
         await fetch(`https://generativelanguage.googleapis.com/v1beta/${created.name}?force=true`, {
           method: "DELETE", headers: { "x-goog-api-key": apiKey },
         });
       }
     } catch (e) {
       roundTrip = { error: e.name + ": " + e.message };
+    }
+  }
+
+  // Remove probe stores this diagnostic left behind. Prefix-restricted so it
+  // can never touch a real <subject>--<scope> store.
+  let cleaned = [];
+  if (req.headers["x-diag-cleanup"] === "1") {
+    const l = await (await fetch("https://generativelanguage.googleapis.com/v1beta/fileSearchStores", {
+      headers: { "x-goog-api-key": apiKey },
+    })).json();
+    for (const st of l.fileSearchStores || []) {
+      if (!String(st.displayName || "").startsWith("vercel-roundtrip-probe")) continue;
+      await fetch(`https://generativelanguage.googleapis.com/v1beta/${st.name}?force=true`, {
+        method: "DELETE", headers: { "x-goog-api-key": apiKey },
+      });
+      cleaned.push(st.displayName);
     }
   }
 
@@ -84,6 +102,7 @@ export default async function handler(req, res) {
       raw,
       direct,
       roundTrip,
+      cleaned,
     });
   } catch (err) {
     return json(res, 200, { keyFingerprint: fp, keyLength: apiKey.length, keyPrefix: apiKey.slice(0, 3), listError: err.message });

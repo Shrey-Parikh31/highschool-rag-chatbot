@@ -9,16 +9,62 @@ serverless function so the API key never reaches the browser.
 
 ## Architecture
 
+Retrieval-augmented: answers come from documents uploaded by staff, not from
+anything hardcoded.
+
 ```
 Browser (src/App.jsx)          no key, no course data, no staff data
-      │  POST /api/chat  { subjectId, messages, teacherPasscode }
-      ▼
-Serverless function (api/chat.js)      the only place GEMINI_API_KEY is read
-      │  builds the system prompt from api/_data.js
-      │  decides student vs teacher by verifying the passcode
-      ▼
-Google Gemini
+      |  POST /api/chat    { subjectId, messages, teacherPasscode }
+      |  POST /api/upload  file as raw body, passcode in a header   (staff only)
+      v
+Serverless functions (api/)            the only readers of GEMINI_API_KEY
+      |  verify the passcode  -> role
+      |  pick which stores that role may search   (api/_stores.js)
+      v
+Gemini File Search Stores              chunking, embedding and retrieval
+      |  <subject>--shared   syllabus, deadlines      students + staff
+      |  <subject>--staff    rubrics, grades, notes   staff only
+      v
+Google Gemini                          answers, grounded, with citations
 ```
+
+### Why there is no vector database
+
+Gemini's File Search Stores chunk, embed, store and retrieve the documents.
+That replaces Pinecone/Chroma, LangChain, a PDF text extractor and S3 - four
+moving parts and two subscriptions - with one managed service already covered
+by the API key.
+
+There is no schema to migrate either: a store's `displayName` is the registry.
+Stores are named `<subjectId>--<scope>`, so finding the right one is a list
+call, not a database lookup.
+
+### Stores are local to the environment that created them
+
+**Each environment needs its own seed.** A store created from a laptop is
+invisible to the Vercel runtime and vice versa, even with the same API key in
+the same Google project. Verified symmetrically: the laptop lists 7 stores and
+cannot see one Vercel just created; Vercel lists only its own and returns
+`403 PERMISSION_DENIED ... or it may not exist` for the laptop's.
+
+This is not a credential problem. It reproduced identically across two
+different API keys, and `Authorization: Bearer` is rejected with "Expected
+OAuth 2 access token", which confirms these are real API keys rather than OAuth
+tokens. The store namespace appears to be region-local.
+
+So seed a deployment through its own upload endpoint rather than locally:
+
+```bash
+npm run seed                                            # local stores
+npm run seed -- --remote https://your-app.vercel.app    # the deployment's
+```
+
+`--remote` posts to that deployment's `/api/upload`, so the documents are
+created by the runtime that will later search them. It reads `TEACHER_PASSCODE`
+from `.env`, which must match the deployment's.
+
+Uploading through the teacher panel in a browser has always done the right
+thing, because that also goes through the deployment.
 
 ### Why the key is not in the frontend
 
@@ -108,7 +154,8 @@ constraint, not the token cost.
 | `npm run dev` | Frontend + API on one dev server |
 | `npm run build` | Production build to `dist/` |
 | `npm test` | Verifies staff stores are never in a student's scope |
-| `npm run seed` | Loads demo course documents into the stores |
+| `npm run seed` | Loads demo course documents into the local stores |
+| `npm run seed -- --remote <url>` | Seeds a deployment through its own `/api/upload` |
 | `npm run lint` | ESLint |
 
 ## Adding course materials
@@ -127,6 +174,16 @@ Vercel auto-detects Vite and serves `api/*.js` as functions — no config file
 needed. Set `GEMINI_API_KEY` and `TEACHER_PASSCODE` in the project's
 Environment Variables. Never commit `.env`.
 
+After the first deploy, seed that deployment's own stores (see "Stores are
+local to the environment that created them"):
+
+```bash
+npm run seed -- --remote https://your-app.vercel.app
+```
+
+Without this the site still works, but every subject reports that no materials
+have been uploaded.
+
 ## Status
 
 Working: secured backend, retrieval over uploaded documents, role enforced at
@@ -142,5 +199,8 @@ history that survives a refresh.
   staff uses the same secret and it cannot be revoked individually.
 - Uploads are capped at 4MB by Vercel's request body limit. Large textbooks
   need splitting.
-- There is no way to list or delete uploaded documents from the UI yet.
+- There is no way to list or delete uploaded documents from the UI yet, so a
+  file uploaded by mistake keeps being cited until the store is rebuilt.
+- Local and deployed stores are separate, so a document uploaded in one is not
+  visible in the other. Upload through the environment you want it in.
 - Chat history is lost on refresh and when switching subjects.

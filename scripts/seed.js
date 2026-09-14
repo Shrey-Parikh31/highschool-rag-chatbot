@@ -1,7 +1,9 @@
 // Seed the File Search Stores with the demo course content.
 //
-//   node scripts/seed.js            seed every subject below
-//   node scripts/seed.js math       seed one subject
+//   node scripts/seed.js                      seed the local stores
+//   node scripts/seed.js math                 seed one subject
+//   node scripts/seed.js --remote <base-url>  seed a deployment through its
+//                                             own /api/upload (see uploadRemote)
 //
 // This content used to be hardcoded into the prompt in api/_data.js. It is kept
 // here, outside the request path, purely so the demo has something to retrieve.
@@ -82,10 +84,28 @@ CLASS PERFORMANCE (Year 12, Spring 2026)
 - Lowest score: ${d.grades.lowest}%
 `.trim();
 
-async function upload(apiKey, subjectId, scope, filename, text) {
+async function uploadLocal(apiKey, subjectId, scope, filename, text) {
   const store = await ensureStore(apiKey, subjectId, scope);
   await uploadDocument(apiKey, store, filename, text, "text/plain");
-  return filename;
+}
+
+/**
+ * Seed through a deployed instance's own upload endpoint.
+ *
+ * Gemini scopes a File Search Store to the context that created it: stores
+ * created from a laptop are invisible to (and 403 from) the Vercel runtime,
+ * even with a byte-identical API key. So each environment has to create its
+ * own stores, which means going through that environment's /api/upload.
+ */
+async function uploadRemote(baseUrl, passcode, subjectId, scope, filename, text) {
+  const qs = new URLSearchParams({ subjectId, scope, filename });
+  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/api/upload?${qs}`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", "x-teacher-passcode": passcode },
+    body: text,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 }
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -94,8 +114,24 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const only = process.argv[2];
+const args = process.argv.slice(2);
+const remoteIdx = args.indexOf("--remote");
+const remote = remoteIdx !== -1 ? args[remoteIdx + 1] : null;
+if (remoteIdx !== -1) args.splice(remoteIdx, 2);
+const only = args[0];
 const targets = only ? [only] : Object.keys(COURSE_DATA);
+
+if (remote && !process.env.TEACHER_PASSCODE) {
+  console.error("--remote needs TEACHER_PASSCODE (looked in .env), and it must match the deployment's.");
+  process.exit(1);
+}
+
+const put = (id, scope, filename, text) =>
+  remote
+    ? uploadRemote(remote, process.env.TEACHER_PASSCODE, id, scope, filename, text)
+    : uploadLocal(apiKey, id, scope, filename, text);
+
+console.log(remote ? `seeding ${remote}` : "seeding locally");
 
 for (const id of targets) {
   const d = COURSE_DATA[id];
@@ -104,9 +140,9 @@ for (const id of targets) {
     process.exitCode = 1;
     continue;
   }
-  await upload(apiKey, id, SCOPES.SHARED, `${id}-syllabus.txt`, sharedDoc(d));
-  console.log(`  ${id}: uploaded ${id}-syllabus.txt -> ${id}--shared`);
-  await upload(apiKey, id, SCOPES.STAFF, `${id}-staff-notes.txt`, staffDoc(d));
-  console.log(`  ${id}: uploaded ${id}-staff-notes.txt -> ${id}--staff`);
+  await put(id, SCOPES.SHARED, `${id}-syllabus.txt`, sharedDoc(d));
+  console.log(`  ${id}: ${id}-syllabus.txt -> ${id}--shared`);
+  await put(id, SCOPES.STAFF, `${id}-staff-notes.txt`, staffDoc(d));
+  console.log(`  ${id}: ${id}-staff-notes.txt -> ${id}--staff`);
 }
 console.log("done.");

@@ -133,6 +133,34 @@ users"*. An alias keeps working; a pinned id becomes a maintenance chore.
 The free tier also returns intermittent `503 UNAVAILABLE` under load, so
 `api/chat.js` retries once and then fails over to the secondary model.
 
+### What it costs
+
+Measured per question: ~1200 input tokens (mostly the retrieved document
+chunks) and ~240 output tokens.
+
+| | per question | 100 questions | 1000 questions |
+|---|---|---|---|
+| `gemini-flash-latest` | ~$0.0018 | ~$0.18 | ~$1.80 |
+| `gemini-flash-lite-latest` | ~$0.0008 | ~$0.08 | ~$0.80 |
+
+Indexing an uploaded document costs $0.15 per 1M tokens, so a 10-page syllabus
+is well under a cent, one-off.
+
+Cost controls in `api/chat.js`:
+
+- Only the last 12 messages are sent, so a long session costs the same per turn
+  as a short one. History was the only unbounded term.
+- `maxOutputTokens` 800, and each message truncated to 2000 characters.
+- `thinkingConfig.thinkingBudget: 0` — Gemini 3.x Flash otherwise bills ~183
+  reasoning tokens as output, roughly 40% on top. Flash-Lite rejects the field
+  with a 400, so support is learned per model at runtime instead of assumed.
+- Per-IP rate limit of 15 requests per 5 minutes (`RATE_LIMIT_PER_5MIN`),
+  because the deployment URL is reachable by anyone who finds it.
+
+To cap spend on Google's side, set a budget in the Cloud console. **Note that a
+Cloud budget alerts but does not hard-stop billing** — the only true hard stop
+is removing the billing account from the project.
+
 ### Free-tier quota (important)
 
 The Gemini free tier allows **20 requests per day, per model, per project**

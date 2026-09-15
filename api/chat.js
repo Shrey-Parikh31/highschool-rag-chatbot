@@ -5,6 +5,7 @@
 import { buildSystemPrompt, isSubject } from "./_data.js";
 import { storesForRole } from "./_stores.js";
 import { readBody, verifyRole, json } from "./_http.js";
+import { rateLimit } from "./_limit.js";
 
 // Auto-tracking alias: Google repoints it as new Flash models ship, so the app
 // does not go stale. Pin an exact id in GEMINI_MODEL if a release regresses.
@@ -16,12 +17,31 @@ const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
 // which is exactly the breakage a pinned version buys you.
 const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || "gemini-flash-lite-latest";
 
-const MAX_MESSAGES = 40;
-const MAX_CHARS = 4000;
+// Cost control. Measured usage is ~1200 input tokens (mostly retrieved document
+// chunks) and ~240 output tokens per question, about $0.002 on Flash. The
+// unbounded term is conversation history, so it is trimmed rather than capped:
+// 40 messages of 4000 chars would be ~40k tokens, twenty times a normal turn.
+const KEEP_MESSAGES = 12;
+const MAX_CHARS = 2000;
+const MAX_OUTPUT_TOKENS = 800;
 const UPSTREAM_TIMEOUT_MS = 20000;
+
+// Gemini 3.x Flash reasons before answering and bills those thoughts as output
+// (~183 tokens, roughly 40% on top). Flash-Lite rejects the field outright with
+// a 400, so support is discovered once per instance rather than assumed.
+const thinkingUnsupported = new Set();
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
+
+  // Before anything that costs money.
+  const limit = rateLimit(req);
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfter));
+    return json(res, 429, {
+      error: `That's a lot of questions at once! Give it ${limit.retryAfter} seconds and try again.`,
+    });
+  }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return json(res, 500, { error: "GEMINI_API_KEY is not set on the server." });
@@ -36,13 +56,14 @@ export default async function handler(req, res) {
   const { subjectId, messages, teacherPasscode } = body;
 
   if (!isSubject(subjectId)) return json(res, 400, { error: "Unknown subject." });
-  if (!Array.isArray(messages) || messages.length === 0 || messages.length > MAX_MESSAGES) {
+  if (!Array.isArray(messages) || messages.length === 0) {
     return json(res, 400, { error: "Invalid message history." });
   }
 
   // Normalise rather than trust: drop anything that isn't a well-formed turn.
+  // Only the tail is sent: a long session should cost the same as a short one.
   const contents = [];
-  for (const m of messages) {
+  for (const m of messages.slice(-KEEP_MESSAGES)) {
     const text = typeof m?.text === "string" ? m.text.slice(0, MAX_CHARS) : null;
     if (!text) continue;
     contents.push({ role: m.from === "user" ? "user" : "model", parts: [{ text }] });
@@ -67,18 +88,21 @@ export default async function handler(req, res) {
   const payload = {
     systemInstruction: { parts: [{ text: system }] },
     contents,
-    generationConfig: { maxOutputTokens: 1200 },
+    generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS },
   };
   if (stores.length) {
     payload.tools = [{ file_search: { file_search_store_names: stores } }];
   }
 
-  const call = (model) =>
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+  const call = (model, withThinkingOff = !thinkingUnsupported.has(model)) => {
+    const body = withThinkingOff
+      ? { ...payload, generationConfig: { ...payload.generationConfig, thinkingConfig: { thinkingBudget: 0 } } }
+      : payload;
+    return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     }).catch((err) => {
       // Normalise a timeout/abort into a 503-shaped result so the retry and
       // failover path treats a hang exactly like an overloaded model.
@@ -87,6 +111,18 @@ export default async function handler(req, res) {
       }
       throw err;
     });
+  };
+
+  // A model that rejects thinkingConfig answers fine without it, so learn that
+  // once and stop sending it rather than failing the request.
+  const callAdaptive = async (model) => {
+    let r = await call(model);
+    if (r.status === 400 && !thinkingUnsupported.has(model)) {
+      thinkingUnsupported.add(model);
+      r = await call(model, false);
+    }
+    return r;
+  };
 
   try {
     // 503 means the model is momentarily busy, so a retry helps.
@@ -95,17 +131,17 @@ export default async function handler(req, res) {
     // nothing. Because the quota is per-model, failing over to a different model
     // is what actually buys capacity.
     let used = MODEL;
-    let upstream = await call(used);
+    let upstream = await callAdaptive(used);
     const overloaded = (r) => r.status === 503;
     const exhausted = (r) => r.status === 429;
 
     if (overloaded(upstream)) {
       await new Promise((r) => setTimeout(r, 1000));
-      upstream = await call(used);
+      upstream = await callAdaptive(used);
     }
     if ((overloaded(upstream) || exhausted(upstream)) && FALLBACK !== MODEL) {
       used = FALLBACK;
-      upstream = await call(used);
+      upstream = await callAdaptive(used);
     }
 
     const data = await upstream.json();

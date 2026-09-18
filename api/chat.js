@@ -24,7 +24,8 @@ const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || "gemini-flash-lite-latest"
 const KEEP_MESSAGES = 12;
 const MAX_CHARS = 2000;
 const MAX_OUTPUT_TOKENS = 800;
-const UPSTREAM_TIMEOUT_MS = 20000;
+const UPSTREAM_TIMEOUT_MS = 20000; // until response headers arrive
+const STREAM_MAX_MS = 45000;       // whole answer; under Vercel's 60s function cap
 
 // Gemini 3.x Flash reasons before answering and bills those thoughts as output
 // (~183 tokens, roughly 40% on top). Flash-Lite rejects the field outright with
@@ -94,87 +95,150 @@ export default async function handler(req, res) {
     payload.tools = [{ file_search: { file_search_store_names: stores } }];
   }
 
-  const call = (model, withThinkingOff = !thinkingUnsupported.has(model)) => {
+  // Connect and wait for response HEADERS only. Status arrives before any text,
+  // so every retry/failover decision is made before a byte reaches the student.
+  // The connect timeout is cleared once headers arrive; a stream is then bounded
+  // separately by STREAM_MAX_MS, so a long answer is not cut off at 20s.
+  const connect = async (model, withThinkingOff = !thinkingUnsupported.has(model)) => {
     const body = withThinkingOff
       ? { ...payload, generationConfig: { ...payload.generationConfig, thinkingConfig: { thinkingBudget: 0 } } }
       : payload;
-    return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      body: JSON.stringify(body),
-    }).catch((err) => {
-      // Normalise a timeout/abort into a 503-shaped result so the retry and
-      // failover path treats a hang exactly like an overloaded model.
-      if (err.name === "TimeoutError" || err.name === "AbortError") {
-        return { ok: false, status: 503, json: async () => ({ error: { message: `${model} timed out` } }) };
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS);
+    try {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          signal: ac.signal,
+          body: JSON.stringify(body),
+        }
+      );
+      return { r, ac };
+    } catch (err) {
+      // A hang is treated exactly like an overloaded model by the failover below.
+      if (err.name === "AbortError" || err.name === "TimeoutError") {
+        return { r: { ok: false, status: 503, body: null, json: async () => ({ error: { message: `${model} timed out` } }) }, ac };
       }
       throw err;
-    });
+    } finally {
+      clearTimeout(timer);
+    }
   };
+  const discard = (attempt) => attempt?.r?.body?.cancel?.().catch(() => {});
 
   // A model that rejects thinkingConfig answers fine without it, so learn that
   // once and stop sending it rather than failing the request.
-  const callAdaptive = async (model) => {
-    let r = await call(model);
-    if (r.status === 400 && !thinkingUnsupported.has(model)) {
+  const connectAdaptive = async (model) => {
+    let a = await connect(model);
+    if (a.r.status === 400 && !thinkingUnsupported.has(model)) {
       thinkingUnsupported.add(model);
-      r = await call(model, false);
+      discard(a);
+      a = await connect(model, false);
     }
-    return r;
+    return a;
   };
 
+  let used = MODEL;
+  let attempt;
   try {
     // 503 means the model is momentarily busy, so a retry helps.
     // 429 means the daily quota for THAT model is gone, and the free tier allows
     // only 20 requests/day/model — so retrying it just burns a second request for
     // nothing. Because the quota is per-model, failing over to a different model
     // is what actually buys capacity.
-    let used = MODEL;
-    let upstream = await callAdaptive(used);
-    const overloaded = (r) => r.status === 503;
-    const exhausted = (r) => r.status === 429;
+    attempt = await connectAdaptive(used);
+    const overloaded = (a) => a.r.status === 503;
+    const exhausted = (a) => a.r.status === 429;
 
-    if (overloaded(upstream)) {
+    if (overloaded(attempt)) {
+      discard(attempt);
       await new Promise((r) => setTimeout(r, 1000));
-      upstream = await callAdaptive(used);
+      attempt = await connectAdaptive(used);
     }
-    if ((overloaded(upstream) || exhausted(upstream)) && FALLBACK !== MODEL) {
+    if ((overloaded(attempt) || exhausted(attempt)) && FALLBACK !== MODEL) {
+      discard(attempt);
       used = FALLBACK;
-      upstream = await callAdaptive(used);
+      attempt = await connectAdaptive(used);
     }
-
-    const data = await upstream.json();
-    if (!upstream.ok) {
-      // Surface the real upstream reason (quota, bad key, safety) but never the key.
-      const raw = data?.error?.message || "Upstream API error.";
-      const msg =
-        upstream.status === 429
-          ? "Daily free-tier quota is used up for today. The Gemini free tier allows 20 requests per day per model. Enable billing on the Google Cloud project to lift it."
-          : raw;
-      return json(res, upstream.status, { error: msg });
-    }
-
-    const candidate = data.candidates?.[0];
-    const text = candidate?.content?.parts?.map((p) => p.text || "").join("").trim();
-
-    if (!text) {
-      const reason = candidate?.finishReason;
-      return json(res, 502, { error: `Model returned no text${reason ? ` (${reason})` : ""}.` });
-    }
-
-    // Which documents the answer was actually grounded in. Showing these is the
-    // difference between "trust me" and "here's where I read it".
-    const sources = [
-      ...new Set(
-        (candidate?.groundingMetadata?.groundingChunks || [])
-          .map((c) => c.retrievedContext?.title)
-          .filter(Boolean)
-      ),
-    ];
-
-    return json(res, 200, { text, role, model: used, sources, grounded: stores.length > 0 });
   } catch (err) {
     return json(res, 502, { error: `Could not reach the model: ${err.message}` });
   }
+
+  if (!attempt.r.ok) {
+    // Still before any streaming, so this is an ordinary JSON error response.
+    const data = await attempt.r.json().catch(() => ({}));
+    const raw = data?.error?.message || "Upstream API error.";
+    const msg =
+      attempt.r.status === 429
+        ? "Daily free-tier quota is used up for today. The Gemini free tier allows 20 requests per day per model. Enable billing on the Google Cloud project to lift it."
+        : raw;
+    return json(res, attempt.r.status, { error: msg });
+  }
+
+  // From here the reply streams to the browser as newline-delimited JSON:
+  //   {"t":"delta","text":"..."}  repeated
+  //   {"t":"done", role, model, sources, grounded}   or   {"t":"error","error":"..."}
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("X-Accel-Buffering", "no"); // stop proxies holding the stream back
+  const send = (obj) => res.write(`${JSON.stringify(obj)}\n`);
+
+  const hardStop = setTimeout(() => attempt.ac.abort(), STREAM_MAX_MS);
+  const decoder = new TextDecoder();
+  const sources = new Set();
+  let buf = "";
+  let text = "";
+  let finish;
+  let interrupted = false;
+
+  try {
+    for await (const chunk of attempt.r.body) {
+      buf += decoder.decode(chunk, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue; // SSE framing: blank lines, comments
+        let evt;
+        try {
+          evt = JSON.parse(line.slice(5));
+        } catch {
+          continue;
+        }
+        const cand = evt.candidates?.[0];
+        const delta = (cand?.content?.parts || []).map((p) => (p.thought ? "" : p.text || "")).join("");
+        if (delta) {
+          text += delta;
+          send({ t: "delta", text: delta });
+        }
+        // Grounding arrives in the later chunks; collect it as it comes.
+        for (const g of cand?.groundingMetadata?.groundingChunks || []) {
+          if (g.retrievedContext?.title) sources.add(g.retrievedContext.title);
+        }
+        if (cand?.finishReason) finish = cand.finishReason;
+      }
+    }
+  } catch {
+    interrupted = true;
+  } finally {
+    clearTimeout(hardStop);
+  }
+
+  if (!text.trim()) {
+    send({
+      t: "error",
+      error: interrupted
+        ? "The answer was interrupted. Please try again."
+        : `Model returned no text${finish ? ` (${finish})` : ""}.`,
+    });
+    return res.end();
+  }
+
+  // Which documents the answer was actually grounded in. Showing these is the
+  // difference between "trust me" and "here's where I read it".
+  send({ t: "done", role, model: used, sources: [...sources], grounded: stores.length > 0, truncated: interrupted });
+  return res.end();
 }

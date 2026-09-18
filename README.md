@@ -230,10 +230,24 @@ have been uploaded.
 ## Status
 
 Working: secured backend, retrieval over uploaded documents, role enforced at
-retrieval, staff upload and document manager, answer citations, chat history
-that survives a refresh, cost controls, model failover, deployment.
+retrieval, staff upload and document manager, answer citations, streamed
+replies, chat history that survives a refresh, cost controls, model failover,
+deployment.
 
-Next: per-user accounts replacing the shared passcode, and streamed replies.
+Next: per-user accounts replacing the shared passcode.
+
+### Streaming
+
+Answers stream word by word as newline-delimited JSON (`{"t":"delta"}` lines,
+then one `{"t":"done"}` carrying the role, model and sources). Retry and
+failover all happen before the first byte: Google returns a status code before
+any text, so a busy or exhausted model is swapped out while the reply is still
+an ordinary JSON response.
+
+Measured honestly: on a short answer the first words arrived at 7.9s and the
+last at 8.1s. Nearly all of the wait is document search before generation
+starts, so streaming mainly helps longer answers. The loading label says
+"checking your course notes" because that is what is happening.
 
 ### Known limitations
 

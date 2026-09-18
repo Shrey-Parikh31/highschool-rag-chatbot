@@ -57,15 +57,46 @@ function greeting() {
   return "Good evening";
 }
 
-async function sendToAI(messages, subjectId, teacherPasscode) {
+/**
+ * Ask the assistant and receive the answer as it is written.
+ *
+ * The server replies with newline-delimited JSON: many {"t":"delta"} lines,
+ * then one {"t":"done"} carrying role, sources and model. Errors found before
+ * streaming starts (bad subject, rate limit, quota) come back as an ordinary
+ * JSON body with an error status instead, so both shapes are handled.
+ */
+async function streamFromAI(messages, subjectId, teacherPasscode, onDelta) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ subjectId, messages, teacherPasscode }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-  return data;
+  if (!res.ok || !(res.headers.get("content-type") || "").includes("ndjson")) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Request failed (${res.status})`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let done = null;
+  for (;;) {
+    const { value, done: finished } = await reader.read();
+    if (finished) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) !== -1) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const evt = JSON.parse(line);
+      if (evt.t === "delta") onDelta(evt.text);
+      else if (evt.t === "error") throw new Error(evt.error);
+      else if (evt.t === "done") done = evt;
+    }
+  }
+  if (!done) throw new Error("The answer was cut off. Please try again.");
+  return done;
 }
 
 /**
@@ -306,7 +337,7 @@ export default function App() {
 
   // Persist after every change to the open conversation.
   useEffect(() => {
-    if (subject && messages.length > 1) saveChat(subject.id, messages);
+    if (subject && messages.length > 1 && !messages[messages.length - 1]?.streaming) saveChat(subject.id, messages);
   }, [subject, messages]);
 
   const handleSubjectClick = (s) => {
@@ -334,10 +365,14 @@ export default function App() {
     try {
       // The server builds the prompt and picks the data. This sends only the
       // transcript, the subject, and the passcode it was given.
-      const reply = await sendToAI(updated, subject.id, passcode);
+      let written = "";
+      const reply = await streamFromAI(updated, subject.id, passcode, (delta) => {
+        written += delta;
+        setMessages([...updated, { from: "bot", text: written, streaming: true }]);
+      });
       // The server reports the role it actually granted; trust that, not the pill.
       if (reply.role !== role) setRole(reply.role);
-      setMessages([...updated, { from: "bot", text: reply.text, sources: reply.sources, role: reply.role }]);
+      setMessages([...updated, { from: "bot", text: written, sources: reply.sources, role: reply.role }]);
     } catch (err) {
       console.error(err);
       setMessages([...updated, { from: "bot", text: err.message, isError: true }]);
@@ -824,14 +859,16 @@ export default function App() {
                   </div>
                 )}
 
-                {loading && (
+                {loading && !messages[messages.length - 1]?.streaming && (
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ background: "#F5F3FF", borderRadius: "20px 20px 20px 6px", padding: "14px 18px", display: "flex", gap: 5, alignItems: "center" }}>
                       {[0, 0.18, 0.36].map((delay, i) => (
                         <span key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#A5B4FC", display: "inline-block", animation: `typingDot 1.1s ${delay}s infinite` }} />
                       ))}
                     </div>
-                    <span style={{ fontSize: 14, color: "#8A87A0", fontWeight: 600 }}>thinking…</span>
+                    {/* Most of the wait is document search before the first word
+                        (measured ~8s of an 8.1s answer), so say that honestly. */}
+                    <span style={{ fontSize: 14, color: "#8A87A0", fontWeight: 600 }}>📚 checking your course notes…</span>
                   </div>
                 )}
                 <div ref={bottomRef} />

@@ -122,3 +122,33 @@ export async function uploadDocument(apiKey, store, filename, data, mimeType, { 
   if (!res.ok) throw new Error(body?.error?.message || `Upload failed (HTTP ${res.status})`);
   return body;
 }
+
+/** Documents in one store, newest first. */
+export async function listDocuments(apiKey, store) {
+  const docs = [];
+  let pageToken;
+  do {
+    const q = `${store}/documents${pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : ""}`;
+    const data = await api(q, { apiKey });
+    for (const d of data.documents || []) {
+      docs.push({
+        name: d.name,
+        displayName: d.displayName,
+        sizeBytes: Number(d.sizeBytes || 0),
+        createTime: d.createTime,
+        state: d.state,
+      });
+    }
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return docs.sort((a, b) => String(b.createTime).localeCompare(String(a.createTime)));
+}
+
+/**
+ * Delete one document. The caller must already have checked the document
+ * belongs to a store it is allowed to touch — see api/documents.js.
+ * force=true also removes its indexed chunks, so it stops being cited at once.
+ */
+export async function deleteDocument(apiKey, documentName) {
+  await api(`${documentName}?force=true`, { method: "DELETE", apiKey });
+}

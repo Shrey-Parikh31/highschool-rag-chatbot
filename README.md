@@ -192,6 +192,18 @@ Sign in as staff (the Teacher pill, then the passcode) and use **Upload course
 materials**. Pick the subject, choose who may see the file, and upload a PDF,
 DOCX, TXT, MD or HTML file up to 4MB. Answers cite the document they came from.
 
+The same panel lists everything already uploaded for the chosen subject, with
+who can see it, and a **Remove** button. Removal deletes the indexed chunks too,
+so the document stops being cited immediately.
+
+### Chat history
+
+Student conversations are kept per subject in `sessionStorage`, so they survive
+a refresh and switching subjects, and vanish when the tab closes. **Any
+conversation containing a staff answer is never stored**, and switching from
+Teacher back to Student closes the open chat — school computers are shared, and
+grades must not be left behind for the next person.
+
 A subject with no uploaded documents says so and refuses to invent a syllabus or
 a date — that is deliberate. `npm run seed` loads demo content for maths,
 physics and English so there is something to demonstrate.
@@ -215,11 +227,10 @@ have been uploaded.
 ## Status
 
 Working: secured backend, retrieval over uploaded documents, role enforced at
-retrieval, staff upload UI, answer citations, model failover, deployment.
+retrieval, staff upload and document manager, answer citations, chat history
+that survives a refresh, cost controls, model failover, deployment.
 
-Next: per-user accounts replacing the shared passcode, a document manager for
-staff (list and delete what has been uploaded), streamed replies, and chat
-history that survives a refresh.
+Next: per-user accounts replacing the shared passcode, and streamed replies.
 
 ### Known limitations
 
@@ -227,8 +238,9 @@ history that survives a refresh.
   staff uses the same secret and it cannot be revoked individually.
 - Uploads are capped at 4MB by Vercel's request body limit. Large textbooks
   need splitting.
-- There is no way to list or delete uploaded documents from the UI yet, so a
-  file uploaded by mistake keeps being cited until the store is rebuilt.
 - Local and deployed stores are separate, so a document uploaded in one is not
   visible in the other. Upload through the environment you want it in.
-- Chat history is lost on refresh and when switching subjects.
+- A store listing has, once, returned the other environment's stores for a
+  single request from a fresh connection. It did not reproduce in 24 further
+  local calls or 15 production calls, so it is noted rather than engineered
+  around. If a seeded subject ever answers "not uploaded yet", this is why.

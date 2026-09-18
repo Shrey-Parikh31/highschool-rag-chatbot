@@ -71,7 +71,38 @@ function TeacherUpload({ passcode }) {
   const [scope, setScope]         = useState("shared");
   const [busy, setBusy]           = useState(false);
   const [result, setResult]       = useState(null);
+  const [docs, setDocs]           = useState(null);   // null = loading
+  const [docsError, setDocsError] = useState(null);
   const fileRef = useRef(null);
+
+  const loadDocs = async (id = subjectId) => {
+    setDocs(null);
+    setDocsError(null);
+    try {
+      const res = await fetch(`/api/documents?subjectId=${encodeURIComponent(id)}`, {
+        headers: { "x-teacher-passcode": passcode },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Could not load documents (${res.status})`);
+      setDocs(data.documents);
+    } catch (err) {
+      setDocs([]);
+      setDocsError(err.message);
+    }
+  };
+
+  // Reload whenever the teacher picks a different subject.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadDocs(subjectId); }, [subjectId]);
+
+  const remove = async (doc) => {
+    if (!window.confirm(`Remove "${doc.displayName}"? Students will stop getting answers from it straight away.`)) return;
+    const qs = new URLSearchParams({ subjectId, scope: doc.scope, name: doc.name });
+    const res = await fetch(`/api/documents?${qs}`, { method: "DELETE", headers: { "x-teacher-passcode": passcode } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setDocsError(data.error || `Delete failed (${res.status})`); return; }
+    loadDocs();
+  };
 
   const upload = async () => {
     const file = fileRef.current?.files?.[0];
@@ -89,6 +120,7 @@ function TeacherUpload({ passcode }) {
       if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
       setResult({ ok: true, text: `“${data.filename}” added to ${data.subject} — visible to ${data.visibleTo}.` });
       if (fileRef.current) fileRef.current.value = "";
+      loadDocs();
     } catch (err) {
       setResult({ ok: false, text: err.message });
     }
@@ -164,9 +196,83 @@ function TeacherUpload({ passcode }) {
           🔒 Staff-only files are stored separately and are never searched when a student asks a question.
         </p>
       )}
+
+      <div style={{ marginTop: 22, borderTop: "2px solid #F0EDFA", paddingTop: 16 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 800, color: "#7C7A94", marginBottom: 10 }}>
+          ALREADY UPLOADED FOR {SUBJECTS.find((s) => s.id === subjectId)?.full.toUpperCase()}
+        </div>
+        {docs === null && <p style={{ fontSize: 15, color: "#8A87A0", fontWeight: 600 }}>Loading…</p>}
+        {docsError && <p style={{ fontSize: 15, color: "#B91C1C", fontWeight: 700 }}>⚠️ {docsError}</p>}
+        {docs?.length === 0 && !docsError && (
+          <p style={{ fontSize: 15, color: "#8A87A0", fontWeight: 600 }}>
+            Nothing yet — students asking about this subject are told materials haven&apos;t been uploaded.
+          </p>
+        )}
+        {docs?.length > 0 && (
+          <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+            {docs.map((d) => (
+              <li key={d.name} style={{ display: "flex", alignItems: "center", gap: 10, background: "#F9F7FE", border: "1px solid #E9E5F5", borderRadius: 12, padding: "10px 14px" }}>
+                <span style={{ fontSize: 18 }}>📄</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 15.5, fontWeight: 700, color: "#16161D", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.displayName}</span>
+                  <span style={{ fontSize: 13, color: "#8A87A0", fontWeight: 600 }}>
+                    {d.scope === "staff" ? "🔒 Staff only" : "🎒 All students"} · {d.sizeBytes < 1024 ? `${d.sizeBytes} B` : `${(d.sizeBytes / 1024).toFixed(1)} KB`}
+                    {d.createTime ? ` · ${new Date(d.createTime).toLocaleDateString()}` : ""}
+                  </span>
+                </span>
+                <button
+                  onClick={() => remove(d)}
+                  aria-label={`Remove ${d.displayName}`}
+                  style={{ border: "2px solid #FECACA", background: "#fff", color: "#B91C1C", borderRadius: 999, padding: "6px 14px", fontSize: 14, fontWeight: 800, fontFamily: "inherit", cursor: "pointer" }}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   );
 }
+
+// Chat history survives a refresh and switching subjects, per tab.
+//
+// sessionStorage, not localStorage: school computers are shared, and a session
+// store is wiped when the tab closes. Conversations containing any staff answer
+// are never written at all — grades and teacher notes must not be left behind
+// for the next person at the keyboard.
+const chatKey = (subjectId) => `chat:${subjectId}`;
+
+function loadChat(subjectId) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(chatKey(subjectId)) || "null");
+    return Array.isArray(saved) && saved.length ? saved : null;
+  } catch {
+    return null; // storage blocked or corrupt: just start fresh
+  }
+}
+
+function saveChat(subjectId, messages) {
+  try {
+    if (messages.some((m) => m.role === "teacher")) {
+      sessionStorage.removeItem(chatKey(subjectId));
+      return;
+    }
+    sessionStorage.setItem(chatKey(subjectId), JSON.stringify(messages.filter((m) => !m.isError)));
+  } catch {
+    /* storage full or blocked — persistence is a convenience, not a requirement */
+  }
+}
+
+function clearChat(subjectId) {
+  try { sessionStorage.removeItem(chatKey(subjectId)); } catch { /* ignore */ }
+}
+
+const welcome = (s) => ({
+  from: "bot",
+  text: `Hey! I'm your ${s.full} helper. Ask me about any chapter, topic or deadline — or tap one of these to start.`,
+});
 
 export default function App() {
   const [role, setRole]         = useState("student");
@@ -189,10 +295,21 @@ export default function App() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  // Persist after every change to the open conversation.
+  useEffect(() => {
+    if (subject && messages.length > 1) saveChat(subject.id, messages);
+  }, [subject, messages]);
+
   const handleSubjectClick = (s) => {
     setSubject(s);
-    setMessages([{ from: "bot", text: `Hey! I'm your ${s.full} helper. Ask me about any chapter, topic or deadline — or tap one of these to start.` }]);
+    setMessages(loadChat(s.id) || [welcome(s)]);
     setStep("chat");
+  };
+
+  const startOver = () => {
+    if (!subject) return;
+    clearChat(subject.id);
+    setMessages([welcome(subject)]);
   };
 
   // Shared by the input box and the starter chips, so a tapped chip behaves
@@ -211,7 +328,7 @@ export default function App() {
       const reply = await sendToAI(updated, subject.id, passcode);
       // The server reports the role it actually granted; trust that, not the pill.
       if (reply.role !== role) setRole(reply.role);
-      setMessages([...updated, { from: "bot", text: reply.text, sources: reply.sources }]);
+      setMessages([...updated, { from: "bot", text: reply.text, sources: reply.sources, role: reply.role }]);
     } catch (err) {
       console.error(err);
       setMessages([...updated, { from: "bot", text: err.message, isError: true }]);
@@ -509,7 +626,12 @@ export default function App() {
                 className="role-pill"
                 aria-pressed={role === r}
                 onClick={() => {
-                  if (r === "student") { setPasscode(""); setRole("student"); setAskCode(false); return; }
+                  if (r === "student") {
+                    // Don't leave staff answers on screen for the next person.
+                    if (role === "teacher") goBack();
+                    setPasscode(""); setRole("student"); setAskCode(false);
+                    return;
+                  }
                   // The pill is a claim, not a grant — api/chat.js verifies the
                   // passcode on every request and downgrades silently if it's wrong.
                   setAskCode(true);
@@ -617,6 +739,11 @@ export default function App() {
                 {step === "chat" ? (role === "teacher" ? "🍎 Teacher view" : "🎒 Student view") : "Pick a subject"}
               </div>
             </div>
+            {step === "chat" && messages.length > 1 && (
+              <button className="icon-btn" onClick={startOver} aria-label="Start a new conversation" title="Start over" style={{ fontSize: 14, fontWeight: 800 }}>
+                ↺ New
+              </button>
+            )}
             <button className="icon-btn" onClick={closeChat} aria-label="Close" style={{ fontSize: 24 }}>×</button>
           </div>
 

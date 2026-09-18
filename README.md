@@ -205,8 +205,11 @@ Teacher back to Student closes the open chat — school computers are shared, an
 grades must not be left behind for the next person.
 
 A subject with no uploaded documents says so and refuses to invent a syllabus or
-a date — that is deliberate. `npm run seed` loads demo content for maths,
-physics and English so there is something to demonstrate.
+a date — that is deliberate. `npm run seed` loads made-up demo content for all
+twelve subjects (a student syllabus and a staff notes file each) so there is
+something to demonstrate. It skips any file already uploaded under the same
+name, so it is safe to re-run. Delete the demo files from the teacher panel
+once real ones are uploaded.
 
 ## Deploying
 

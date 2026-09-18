@@ -32,6 +32,15 @@ const STARTERS = {
   math:      ["What's on the mid-term?", "Explain quadratics simply", "I'm stuck on trigonometry"],
   physics:   ["What's due next?", "Explain Newton's laws simply", "Help me revise kinematics"],
   english:   ["What's on the reading list?", "Explain the Macbeth themes", "How do I write a thesis?"],
+  chemistry: ["When's the mid-term?", "Help me with moles", "What do I need for labs?"],
+  biology:   ["What's due next?", "Mitosis vs meiosis?", "Explain Punnett squares"],
+  history:   ["What caused World War I?", "When's the mid-term?", "When's the research project due?"],
+  geography: ["What's on the mid-term?", "Explain plate boundaries", "How do rivers make meanders?"],
+  cs:        ["When's the final project due?", "Explain binary search", "Stacks vs queues?"],
+  economics: ["Explain supply and demand", "What's due next?", "Fiscal vs monetary policy?"],
+  french:    ["Passé composé or imparfait?", "When's the oral presentation?", "Phrases for directions"],
+  art:       ["What's due next?", "Explain complementary colours", "What was Cubism?"],
+  pe:        ["What do I need for PE?", "When's the fitness plan due?", "What's in the theory test?"],
 };
 const DEFAULT_STARTERS = ["What's coming up next?", "What should I revise first?", "Explain this like I'm new to it"];
 

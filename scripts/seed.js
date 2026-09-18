@@ -11,7 +11,7 @@
 // nothing in the running app reads this file.
 
 import { readFileSync } from "node:fs";
-import { ensureStore, uploadDocument, SCOPES } from "../api/_stores.js";
+import { ensureStore, findStore, listDocuments, uploadDocument, SCOPES } from "../api/_stores.js";
 
 // Minimal .env reader: this is a one-off script, not worth a dotenv dependency.
 for (const line of readFileSync(new URL("../.env", import.meta.url), "utf8").split("\n")) {
@@ -53,6 +53,106 @@ const COURSE_DATA = {
     },
     teacherNotes: "Thesis construction is a recurring weak spot. Participation = 15% of final mark.",
     grades: { classAverage: 79, highest: 96, lowest: 55 },
+  },
+  chemistry: {
+    name: "Chemistry",
+    syllabus: ["Unit 1: Atomic Structure and Periodicity", "Unit 2: Chemical Bonding (ionic, covalent, metallic)", "Unit 3: Stoichiometry and the Mole", "Unit 4: Acids, Bases and pH", "Unit 5: Organic Chemistry Foundations"],
+    timeline: [{ date: "Feb 18", event: "Unit 2 Bonding Quiz" }, { date: "Mar 11", event: "Mid-Term Exam (Units 1-3)" }, { date: "Apr 22", event: "Titration Lab Report due" }, { date: "May 18", event: "Final Exam (all units)" }],
+    extracts: {
+      "Unit 1": "Protons, neutrons and electrons; electron configuration; periodic trends in atomic radius, ionisation energy and electronegativity across a period and down a group.",
+      "Unit 3": "The mole is 6.022 x 10^23 particles. Moles = mass / molar mass. Balance equations before using mole ratios. The limiting reagent determines the maximum product.",
+      "Lab safety": "Goggles and lab coats are mandatory for every practical session. Students without goggles are sent out and marked absent for that lab.",
+    },
+    teacherNotes: "Mole calculations are the biggest stumbling block; run two extra worked-example sessions before the mid-term. Grading: 25% practicals, 35% tests, 40% final.",
+    grades: { classAverage: 72, highest: 97, lowest: 44 },
+  },
+  biology: {
+    name: "Biology",
+    syllabus: ["Unit 1: Cell Structure and Function", "Unit 2: Genetics and Inheritance", "Unit 3: Evolution and Natural Selection", "Unit 4: Human Body Systems", "Unit 5: Ecology"],
+    timeline: [{ date: "Feb 12", event: "Microscope Practical" }, { date: "Mar 9", event: "Mid-Term Exam (Units 1-2)" }, { date: "Apr 17", event: "Ecology Field Report due" }, { date: "May 21", event: "Final Exam" }],
+    extracts: {
+      "Unit 1": "Prokaryotic vs eukaryotic cells. Organelles: nucleus, mitochondria (respiration), ribosomes (protein synthesis), chloroplasts (photosynthesis, plants only). Diffusion, osmosis and active transport.",
+      "Unit 2": "DNA is a double helix with base pairs A-T and C-G. Mitosis makes identical body cells; meiosis makes gametes. Punnett squares predict offspring ratios for dominant and recessive alleles.",
+    },
+    teacherNotes: "Students confuse mitosis and meiosis every year; use the comparison table. Field report = 20% of grade.",
+    grades: { classAverage: 77, highest: 99, lowest: 49 },
+  },
+  history: {
+    name: "History",
+    syllabus: ["Unit 1: The Industrial Revolution", "Unit 2: World War I", "Unit 3: The Interwar Years and the Great Depression", "Unit 4: World War II", "Unit 5: The Cold War"],
+    timeline: [{ date: "Feb 16", event: "Source Analysis Essay due" }, { date: "Mar 12", event: "Mid-Term Exam (Units 1-3)" }, { date: "Apr 20", event: "Research Project due" }, { date: "May 26", event: "Final Exam" }],
+    extracts: {
+      "Unit 2": "Long-term causes of WWI: militarism, alliances, imperialism, nationalism (MAIN). Short-term trigger: the assassination of Archduke Franz Ferdinand, June 1914.",
+      "Unit 3": "The 1929 Wall Street Crash led to the Great Depression, mass unemployment and the rise of extremist parties in Europe. The Treaty of Versailles fuelled resentment in Germany.",
+    },
+    teacherNotes: "Essays tend to describe rather than analyse; push why-questions. Research project = 25% of grade.",
+    grades: { classAverage: 75, highest: 94, lowest: 51 },
+  },
+  geography: {
+    name: "Geography",
+    syllabus: ["Unit 1: Plate Tectonics and Hazards", "Unit 2: Weather and Climate", "Unit 3: Rivers and Coasts", "Unit 4: Urbanisation", "Unit 5: Resource Management"],
+    timeline: [{ date: "Feb 24", event: "Map Skills Test" }, { date: "Mar 13", event: "Mid-Term Exam (Units 1-2)" }, { date: "Apr 14", event: "River Fieldwork Write-up due" }, { date: "May 27", event: "Final Exam" }],
+    extracts: {
+      "Unit 1": "Constructive (divergent), destructive (convergent) and conservative (transform) plate boundaries. Earthquakes occur at all three; volcanoes mainly at constructive and destructive boundaries.",
+      "Unit 3": "River processes: erosion (hydraulic action, abrasion, attrition, solution), transport and deposition. Landforms include waterfalls, meanders, ox-bow lakes and floodplains.",
+    },
+    teacherNotes: "Case-study detail is weak; students need named places and figures. Fieldwork = 20% of grade.",
+    grades: { classAverage: 78, highest: 95, lowest: 52 },
+  },
+  cs: {
+    name: "Computer Science",
+    syllabus: ["Unit 1: Programming Fundamentals (Python)", "Unit 2: Data Structures", "Unit 3: Algorithms: Searching and Sorting", "Unit 4: Computer Networks", "Unit 5: Databases and SQL"],
+    timeline: [{ date: "Feb 11", event: "Python Mini-Project due" }, { date: "Mar 6", event: "Mid-Term Exam (Units 1-3)" }, { date: "Apr 29", event: "Final Project due" }, { date: "May 20", event: "Final Exam" }],
+    extracts: {
+      "Unit 2": "Lists, stacks (last in, first out), queues (first in, first out) and dictionaries (key-value pairs). Choose the structure by how data is added and removed.",
+      "Unit 3": "Linear search checks each item, O(n). Binary search halves a sorted list each step, O(log n). Bubble sort is O(n^2); merge sort is O(n log n).",
+    },
+    teacherNotes: "Big-O notation needs more practice. Final project = 30% of grade; the academic honesty policy applies to all code.",
+    grades: { classAverage: 81, highest: 100, lowest: 47 },
+  },
+  economics: {
+    name: "Economics",
+    syllabus: ["Unit 1: Supply and Demand", "Unit 2: Market Structures", "Unit 3: Macroeconomic Indicators (GDP, inflation, unemployment)", "Unit 4: Fiscal and Monetary Policy", "Unit 5: International Trade"],
+    timeline: [{ date: "Feb 19", event: "Market Analysis Assignment due" }, { date: "Mar 10", event: "Mid-Term Exam (Units 1-3)" }, { date: "Apr 23", event: "Policy Debate" }, { date: "May 22", event: "Final Exam" }],
+    extracts: {
+      "Unit 1": "Law of demand: as price rises, quantity demanded falls. Equilibrium is where supply meets demand. A shift of the whole curve is caused by non-price factors such as income or tastes.",
+      "Unit 4": "Fiscal policy is government spending and taxation. Monetary policy is the central bank setting interest rates and the money supply. Higher interest rates usually reduce inflation.",
+    },
+    teacherNotes: "Diagram labelling costs easy marks; insist on labelled axes. Debate participation = 10% of grade.",
+    grades: { classAverage: 76, highest: 96, lowest: 50 },
+  },
+  french: {
+    name: "French",
+    syllabus: ["Unit 1: Present Tense and Everyday Conversation", "Unit 2: Passe Compose and Imparfait", "Unit 3: Travel and Directions", "Unit 4: Future and Conditional Tenses", "Unit 5: French-Speaking Cultures"],
+    timeline: [{ date: "Feb 13", event: "Vocabulary Quiz" }, { date: "Mar 16", event: "Mid-Term Exam (written and oral, Units 1-2)" }, { date: "Apr 21", event: "Oral Presentation" }, { date: "May 28", event: "Final Exam" }],
+    extracts: {
+      "Unit 2": "Passe compose = avoir or etre + past participle, for completed actions (j'ai mange). Imparfait = ongoing or repeated past actions and descriptions (je mangeais). Verbs of movement take etre.",
+      "Unit 3": "Useful phrases: Ou est la gare ? (Where is the station?), tournez a gauche / a droite (turn left / right), allez tout droit (go straight on).",
+    },
+    teacherNotes: "Oral confidence is low; pair practice each lesson. Oral components = 30% of grade.",
+    grades: { classAverage: 74, highest: 98, lowest: 46 },
+  },
+  art: {
+    name: "Visual Arts",
+    syllabus: ["Unit 1: Drawing and Observation", "Unit 2: Colour Theory", "Unit 3: Art History: Renaissance to Modernism", "Unit 4: Mixed Media", "Unit 5: Personal Portfolio"],
+    timeline: [{ date: "Feb 20", event: "Observational Drawing Portfolio check" }, { date: "Mar 18", event: "Mid-Term Critique" }, { date: "Apr 28", event: "Mixed Media Piece due" }, { date: "May 29", event: "Final Portfolio Exhibition" }],
+    extracts: {
+      "Unit 2": "Primary colours: red, yellow, blue. Complementary colours sit opposite each other on the colour wheel and create contrast. Warm colours advance; cool colours recede.",
+      "Unit 3": "The Renaissance introduced linear perspective. Impressionism (Monet) captured light and the moment. Cubism (Picasso) showed several viewpoints at once.",
+    },
+    teacherNotes: "Sketchbook annotation is thin; require a written reflection on each piece. Portfolio = 60% of grade.",
+    grades: { classAverage: 84, highest: 98, lowest: 61 },
+  },
+  pe: {
+    name: "Physical Education",
+    syllabus: ["Unit 1: Fitness Components and Testing", "Unit 2: Anatomy and Physiology", "Unit 3: Team Sports: Basketball and Football", "Unit 4: Health and Nutrition", "Unit 5: Personal Fitness Plan"],
+    timeline: [{ date: "Feb 9", event: "Baseline Fitness Test" }, { date: "Mar 5", event: "Mid-Term Theory Test (Units 1-2)" }, { date: "Apr 15", event: "Personal Fitness Plan due" }, { date: "May 19", event: "Final Practical Assessment" }],
+    extracts: {
+      "Unit 1": "Components of fitness: cardiovascular endurance, muscular strength, muscular endurance, flexibility and body composition. The beep test measures cardiovascular endurance.",
+      "Kit": "Full PE kit and trainers are required for every practical lesson. No jewellery. Bring a water bottle.",
+    },
+    teacherNotes: "Theory marks lag practical marks; add short weekly quizzes. Practical = 50%, theory = 50%.",
+    grades: { classAverage: 80, highest: 97, lowest: 58 },
   },
 };
 
@@ -126,10 +226,32 @@ if (remote && !process.env.TEACHER_PASSCODE) {
   process.exit(1);
 }
 
-const put = (id, scope, filename, text) =>
-  remote
+// Idempotent: a file already present under the same name is skipped, so
+// re-running the seed never makes the bot cite the same syllabus twice.
+async function existing(id) {
+  if (remote) {
+    const res = await fetch(`${remote.replace(/\/$/, "")}/api/documents?subjectId=${id}`, {
+      headers: { "x-teacher-passcode": process.env.TEACHER_PASSCODE },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return new Set(data.documents.map((d) => d.displayName));
+  }
+  const names = new Set();
+  for (const scope of [SCOPES.SHARED, SCOPES.STAFF]) {
+    const store = await findStore(apiKey, id, scope);
+    if (store) for (const d of await listDocuments(apiKey, store)) names.add(d.displayName);
+  }
+  return names;
+}
+
+const put = async (have, id, scope, filename, text) => {
+  if (have.has(filename)) return `${filename} already there, skipped`;
+  await (remote
     ? uploadRemote(remote, process.env.TEACHER_PASSCODE, id, scope, filename, text)
-    : uploadLocal(apiKey, id, scope, filename, text);
+    : uploadLocal(apiKey, id, scope, filename, text));
+  return `${filename} -> ${id}--${scope}`;
+};
 
 console.log(remote ? `seeding ${remote}` : "seeding locally");
 
@@ -140,9 +262,8 @@ for (const id of targets) {
     process.exitCode = 1;
     continue;
   }
-  await put(id, SCOPES.SHARED, `${id}-syllabus.txt`, sharedDoc(d));
-  console.log(`  ${id}: ${id}-syllabus.txt -> ${id}--shared`);
-  await put(id, SCOPES.STAFF, `${id}-staff-notes.txt`, staffDoc(d));
-  console.log(`  ${id}: ${id}-staff-notes.txt -> ${id}--staff`);
+  const have = await existing(id);
+  console.log(`  ${id}: ${await put(have, id, SCOPES.SHARED, `${id}-syllabus.txt`, sharedDoc(d))}`);
+  console.log(`  ${id}: ${await put(have, id, SCOPES.STAFF, `${id}-staff-notes.txt`, staffDoc(d))}`);
 }
 console.log("done.");

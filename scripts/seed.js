@@ -10,14 +10,12 @@
 // Replace it by uploading real syllabus PDFs through the app's teacher panel —
 // nothing in the running app reads this file.
 
-import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { ensureStore, findStore, listDocuments, uploadDocument, SCOPES } from "../api/_stores.js";
+import { readDotEnv } from "./dotenv.js";
 
-// Minimal .env reader: this is a one-off script, not worth a dotenv dependency.
-for (const line of readFileSync(new URL("../.env", import.meta.url), "utf8").split("\n")) {
-  const m = line.match(/^\s*([A-Z_]+)\s*=\s*(.*?)\s*$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
-}
+// .env overrides the OS environment — see scripts/dotenv.js for why.
+Object.assign(process.env, readDotEnv(fileURLToPath(new URL("../.env", import.meta.url))));
 
 const COURSE_DATA = {
   math: {

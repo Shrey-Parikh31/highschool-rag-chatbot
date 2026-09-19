@@ -39,6 +39,14 @@ There is no schema to migrate either: a store's `displayName` is the registry.
 Stores are named `<subjectId>--<scope>`, so finding the right one is a list
 call, not a database lookup.
 
+### `.env` beats the Windows environment
+
+Vite's `loadEnv` lets an OS-level variable override `.env`. A `GEMINI_API_KEY`
+saved in the Windows user environment for another project once shadowed this
+project's key, so the dev server used a revoked key while `.env` held the right
+one. `scripts/dotenv.js` now makes the project's `.env` win for both the dev
+server and the seed script.
+
 ### Stores are local to the environment that created them
 
 **Each environment needs its own seed.** A store created from a laptop is
@@ -119,8 +127,8 @@ production without running a second process.
 | Variable | Required | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` | yes | Server-side Gemini key. |
-| `GEMINI_MODEL` | no | Defaults to `gemini-flash-latest`. |
-| `GEMINI_FALLBACK_MODEL` | no | Defaults to `gemini-flash-lite-latest`. Used when the primary is saturated. |
+| `GEMINI_MODEL` | no | Defaults to `gemini-flash-lite-latest` (cheapest; see cost section). |
+| `GEMINI_FALLBACK_MODEL` | no | Defaults to `gemini-flash-latest`. Used when the primary is busy, out of quota, or refuses the request. |
 | `TEACHER_PASSCODE` | no | Unlocks teacher mode. Unset means teacher mode is unreachable. |
 
 ### On keeping models current
@@ -157,7 +165,12 @@ Cost controls in `api/chat.js`:
 - Per-IP rate limit of 15 requests per 5 minutes (`RATE_LIMIT_PER_5MIN`),
   because the deployment URL is reachable by anyone who finds it.
 
-To cap spend on Google's side, set a budget in the Cloud console. **Note that a
+Flash-Lite answers first. It was measured answering a grounded question in
+3.4s against ~8s for Flash, at about 2.5x lower cost (5x after 2027-01-01, when
+Flash's price doubles). Flash remains the fallback.
+
+To cap spend on Google's side, set a monthly spend cap per project at
+aistudio.google.com/spend. **Note that a
 Cloud budget alerts but does not hard-stop billing** — the only true hard stop
 is removing the billing account from the project.
 

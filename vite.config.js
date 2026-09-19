@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { readDotEnv } from "./scripts/dotenv.js";
 
 // Vercel runs api/*.js for us in production. Locally, mount the same handler on
 // the dev server so `npm run dev` exercises identical code — no `vercel dev`,
@@ -34,5 +35,7 @@ function devApi(env) {
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), devApi(loadEnv(mode, process.cwd(), ""))],
+  // loadEnv lets an OS-level variable beat .env; for the API handlers the
+  // project's .env must win (scripts/dotenv.js explains the incident).
+  plugins: [react(), devApi({ ...loadEnv(mode, process.cwd(), ""), ...readDotEnv(".env") })],
 }));

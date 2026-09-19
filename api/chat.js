@@ -7,15 +7,16 @@ import { storesForRole } from "./_stores.js";
 import { readBody, verifyRole, json } from "./_http.js";
 import { rateLimit } from "./_limit.js";
 
-// Auto-tracking alias: Google repoints it as new Flash models ship, so the app
-// does not go stale. Pin an exact id in GEMINI_MODEL if a release regresses.
-const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
-// Free-tier Flash throws intermittent 503s. When the primary is saturated, a
-// different model usually is not, so failover beats retrying the same one.
+// Flash-Lite answers first: ~2.5x cheaper per question than Flash today and
+// ~5x after 2027-01-01, when Flash's price doubles. The chatbot runs on a
+// shared $5 prepaid balance capped at $2.50/month, and syllabus lookups do not
+// need the bigger model. Flash is the fallback when Lite is busy or refuses.
+//
 // Both are "-latest" aliases on purpose: Google repoints them as models ship and
 // retires pinned ids. gemini-2.5-flash was rejected as deprecated on 2026-09-09,
 // which is exactly the breakage a pinned version buys you.
-const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || "gemini-flash-lite-latest";
+const MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
+const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || "gemini-flash-latest";
 
 // Cost control. Measured usage is ~1200 input tokens (mostly retrieved document
 // chunks) and ~240 output tokens per question, about $0.002 on Flash. The
@@ -29,8 +30,9 @@ const STREAM_MAX_MS = 45000;       // whole answer; under Vercel's 60s function 
 
 // Gemini 3.x Flash reasons before answering and bills those thoughts as output
 // (~183 tokens, roughly 40% on top). Flash-Lite rejects the field outright with
-// a 400, so support is discovered once per instance rather than assumed.
-const thinkingUnsupported = new Set();
+// a 400, so it starts in this set to skip that wasted round trip on every cold
+// start; any other model that rejects it is learned at runtime.
+const thinkingUnsupported = new Set(["gemini-flash-lite-latest"]);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
@@ -151,13 +153,17 @@ export default async function handler(req, res) {
     attempt = await connectAdaptive(used);
     const overloaded = (a) => a.r.status === 503;
     const exhausted = (a) => a.r.status === 429;
+    // A 400 that survives the thinking-config retry means this model refuses the
+    // request shape (e.g. a model without file_search support). Rejected
+    // requests are not billed, so trying the other model costs nothing.
+    const refused = (a) => a.r.status === 400;
 
     if (overloaded(attempt)) {
       discard(attempt);
       await new Promise((r) => setTimeout(r, 1000));
       attempt = await connectAdaptive(used);
     }
-    if ((overloaded(attempt) || exhausted(attempt)) && FALLBACK !== MODEL) {
+    if ((overloaded(attempt) || exhausted(attempt) || refused(attempt)) && FALLBACK !== MODEL) {
       discard(attempt);
       used = FALLBACK;
       attempt = await connectAdaptive(used);

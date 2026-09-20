@@ -10,14 +10,14 @@ import { useState, useRef, useEffect } from "react";
 import Markdown from "react-markdown";
 
 const SUBJECTS = [
-  { id: "math",      name: "Maths",        full: "Mathematics",        icon: "📐", color: "#4F46E5" },
+  { id: "math",      name: "Math",         full: "Mathematics",        icon: "📐", color: "#4F46E5" },
   { id: "physics",   name: "Physics",      full: "Physics",            icon: "🔭", color: "#0891B2" },
   { id: "chemistry", name: "Chemistry",    full: "Chemistry",          icon: "⚗️", color: "#059669" },
   { id: "biology",   name: "Biology",      full: "Biology",            icon: "🧬", color: "#16A34A" },
   { id: "english",   name: "English",      full: "English Literature", icon: "📖", color: "#E11D48" },
   { id: "history",   name: "History",      full: "History",            icon: "🏛️", color: "#B45309" },
   { id: "geography", name: "Geography",    full: "Geography",          icon: "🌍", color: "#0D9488" },
-  { id: "cs",        name: "Computing",    full: "Computer Science",   icon: "💻", color: "#7C3AED" },
+  { id: "cs",        name: "Comp Sci",     full: "Computer Science",   icon: "💻", color: "#7C3AED" },
   { id: "economics", name: "Economics",    full: "Economics",          icon: "📊", color: "#EA580C" },
   // Not the 🇫🇷 flag: Windows ships no flag emoji, so it renders as faded "FR" letters.
   { id: "french",    name: "French",       full: "French",             icon: "🥐", color: "#DB2777" },
@@ -30,7 +30,7 @@ const SUBJECTS = [
 // Shrey: tune the wording here — these should sound like your actual students.
 const STARTERS = {
   math:      ["What's on the mid-term?", "Explain quadratics simply", "I'm stuck on trigonometry"],
-  physics:   ["What's due next?", "Explain Newton's laws simply", "Help me revise kinematics"],
+  physics:   ["What's due next?", "Explain Newton's laws simply", "Help me study kinematics"],
   english:   ["What's on the reading list?", "Explain the Macbeth themes", "How do I write a thesis?"],
   chemistry: ["When's the mid-term?", "Help me with moles", "What do I need for labs?"],
   biology:   ["What's due next?", "Mitosis vs meiosis?", "Explain Punnett squares"],
@@ -39,15 +39,15 @@ const STARTERS = {
   cs:        ["When's the final project due?", "Explain binary search", "Stacks vs queues?"],
   economics: ["Explain supply and demand", "What's due next?", "Fiscal vs monetary policy?"],
   french:    ["Passé composé or imparfait?", "When's the oral presentation?", "Phrases for directions"],
-  art:       ["What's due next?", "Explain complementary colours", "What was Cubism?"],
+  art:       ["What's due next?", "Explain complementary colors", "What was Cubism?"],
   pe:        ["What do I need for PE?", "When's the fitness plan due?", "What's in the theory test?"],
 };
-const DEFAULT_STARTERS = ["What's coming up next?", "What should I revise first?", "Explain this like I'm new to it"];
+const DEFAULT_STARTERS = ["What's coming up next?", "What should I study first?", "Explain this like I'm new to it"];
 
 const ANNOUNCEMENTS = [
-  { tag: "Heads up", emoji: "📌", text: "Mid-term exams begin March 5th. Check each subject for exact dates.",   bg: "#EEF2FF", border: "#C7D2FE", tagColor: "#4F46E5" },
-  { tag: "New",      emoji: "✨", text: "Year 12 study packs are up in the resource library for all subjects.",  bg: "#ECFDF5", border: "#A7F3D0", tagColor: "#059669" },
-  { tag: "Event",    emoji: "📅", text: "Parent-teacher conferences on April 3rd. Booking opens Monday.",        bg: "#FFF7ED", border: "#FED7AA", tagColor: "#EA580C" },
+  { tag: "Heads up", emoji: "📌", text: "Mid-term exams begin October 19th. Check each subject for exact dates.",   bg: "#EEF2FF", border: "#C7D2FE", tagColor: "#4F46E5" },
+  { tag: "New",      emoji: "✨", text: "Grade 12 study packs are up in the resource library for all subjects.",  bg: "#ECFDF5", border: "#A7F3D0", tagColor: "#059669" },
+  { tag: "Event",    emoji: "📅", text: "Parent-teacher conferences on November 6th. Booking opens Monday.",        bg: "#FFF7ED", border: "#FED7AA", tagColor: "#EA580C" },
 ];
 
 function greeting() {
@@ -700,7 +700,7 @@ export default function App() {
               {greeting()} <span style={{ display: "inline-block" }}>👋</span>
             </h1>
             <p style={{ fontSize: 17.5, color: "#6B6885", fontWeight: 600 }}>
-              Year 12 · Spring Semester 2026 — pick a subject and ask me anything.
+              Grade 12 · Fall Semester 2026 — pick a subject and ask me anything.
             </p>
           </div>
 

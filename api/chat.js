@@ -1,4 +1,4 @@
-// Vercel Serverless Function — the only place the Gemini key is ever read.
+// Vercel Serverless Function, the only place the Gemini key is ever read.
 // Also runs under `npm run dev` via the dev-api plugin in vite.config.js,
 // so local and production execute this exact file.
 
@@ -147,7 +147,7 @@ export default async function handler(req, res) {
   try {
     // 503 means the model is momentarily busy, so a retry helps.
     // 429 means the daily quota for THAT model is gone, and the free tier allows
-    // only 20 requests/day/model — so retrying it just burns a second request for
+    // only 20 requests/day/model, so retrying it just burns a second request for
     // nothing. Because the quota is per-model, failing over to a different model
     // is what actually buys capacity.
     attempt = await connectAdaptive(used);

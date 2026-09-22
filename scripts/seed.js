@@ -7,14 +7,14 @@
 //
 // This content used to be hardcoded into the prompt in api/_data.js. It is kept
 // here, outside the request path, purely so the demo has something to retrieve.
-// Replace it by uploading real syllabus PDFs through the app's teacher panel —
+// Replace it by uploading real syllabus PDFs through the app's teacher panel,
 // nothing in the running app reads this file.
 
 import { fileURLToPath } from "node:url";
 import { ensureStore, findStore, listDocuments, uploadDocument, SCOPES } from "../api/_stores.js";
 import { readDotEnv } from "./dotenv.js";
 
-// .env overrides the OS environment — see scripts/dotenv.js for why.
+// .env overrides the OS environment, see scripts/dotenv.js for why.
 Object.assign(process.env, readDotEnv(fileURLToPath(new URL("../.env", import.meta.url))));
 
 const COURSE_DATA = {

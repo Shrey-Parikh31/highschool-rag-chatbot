@@ -40,7 +40,7 @@ const teacher = buildSystemPrompt("teacher", "math", true);
 assert.ok(!student.includes("STAFF ACCESS"), "student prompt claims staff access");
 assert.ok(teacher.includes("STAFF ACCESS"), "teacher prompt is missing staff access");
 
-// Anything that isn't exactly "teacher" is a student — no truthy-string bypass.
+// Anything that isn't exactly "teacher" is a student, no truthy-string bypass.
 for (const role of ["Teacher", "TEACHER", "admin", "", null, undefined, true]) {
   assert.equal(buildSystemPrompt(role, "math", true), student, `role ${String(role)} was not treated as student`);
 }
@@ -58,4 +58,4 @@ for (const leaked of ["74", "Predicted weak area", "SOH-CAH-TOA", "Mar 5"]) {
   assert.ok(!teacher.includes(leaked), `course content is still hardcoded: ${leaked}`);
 }
 
-console.log("ok — staff stores are never in a student's scope, and no course data is hardcoded");
+console.log("ok: staff stores are never in a student's scope, and no course data is hardcoded");

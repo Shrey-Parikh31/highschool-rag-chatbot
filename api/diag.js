@@ -64,7 +64,7 @@ export default async function handler(req, res) {
         listedAfterCreate: (listed.fileSearchStores || []).map((x) => x.displayName),
       };
       // x-diag-keep leaves the probe store behind so the other environment can
-      // try to see it — that tells us whether the isolation is symmetric.
+      // try to see it, that tells us whether the isolation is symmetric.
       if (created?.name && req.headers["x-diag-keep"] !== "1") {
         await fetch(`https://generativelanguage.googleapis.com/v1beta/${created.name}?force=true`, {
           method: "DELETE", headers: { "x-goog-api-key": apiKey },

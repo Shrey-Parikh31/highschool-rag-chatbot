@@ -3,7 +3,7 @@
 // Values here deliberately OVERRIDE anything already in the environment. A
 // GEMINI_API_KEY saved in the Windows user environment (for another project)
 // once shadowed .env: Vite's loadEnv gives the OS variable priority, so the dev
-// server and the seed script silently used a different — later revoked — key
+// server and the seed script silently used a different, later revoked, key
 // while .env held the right one. The project's own file is the more specific
 // setting, so it wins.
 import { readFileSync, existsSync } from "node:fs";

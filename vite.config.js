@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { readDotEnv } from "./scripts/dotenv.js";
 
 // Vercel runs api/*.js for us in production. Locally, mount the same handler on
-// the dev server so `npm run dev` exercises identical code — no `vercel dev`,
+// the dev server so `npm run dev` exercises identical code, no `vercel dev`,
 // no second process, no drift between local and deployed behaviour.
 function devApi(env) {
   return {

@@ -1,8 +1,11 @@
-# Middletown High — Academic Assistant
+# Middletown High: Academic Assistant
 
 An AI study assistant for high school students, with a separate staff view for
 teachers. Students ask about syllabus topics, chapters and deadlines; teachers
 additionally see class performance data.
+
+Other projects: [rbac-rag-assistant](https://github.com/Shrey-Parikh31/rbac-rag-assistant) ·
+[drivescore-cloud](https://github.com/Shrey-Parikh31/drivescore-cloud)
 
 Built with React + Vite. Answers come from Google Gemini, called from a
 serverless function so the API key never reaches the browser.
@@ -77,7 +80,7 @@ thing, because that also goes through the deployment.
 ### Why the key is not in the frontend
 
 Vite compiles any `VITE_`-prefixed variable directly into the JavaScript bundle.
-A key placed there is public the moment the site is deployed — visible in
+A key placed there is public the moment the site is deployed, visible in
 DevTools and in the built files. Every secret therefore lives server-side, and
 the browser only ever talks to `/api/chat`.
 
@@ -90,7 +93,7 @@ student scope if it doesn't match.
 The boundary is enforced at **retrieval**, not in the prompt. A student's
 request searches only that subject's `--shared` store, so staff documents are
 never read, never chunked into context, and cannot appear in an answer. The
-student prompt therefore contains no "do not reveal grades" instruction — there
+student prompt therefore contains no "do not reveal grades" instruction, there
 is nothing present to withhold.
 
 That distinction is visible in the API response. Asked for the class average:
@@ -105,7 +108,7 @@ available from the documents it was allowed to search. Run `npm test` to check
 that scopes never collide.
 
 The shared passcode is a demo-grade stand-in for real accounts. Swapping it for
-per-user auth means changing how `role` is derived in `api/chat.js` — the
+per-user auth means changing how `role` is derived in `api/chat.js`, the
 boundary itself does not move.
 
 ## Local setup
@@ -159,7 +162,7 @@ Cost controls in `api/chat.js`:
 - Only the last 12 messages are sent, so a long session costs the same per turn
   as a short one. History was the only unbounded term.
 - `maxOutputTokens` 800, and each message truncated to 2000 characters.
-- `thinkingConfig.thinkingBudget: 0` — Gemini 3.x Flash otherwise bills ~183
+- `thinkingConfig.thinkingBudget: 0`, Gemini 3.x Flash otherwise bills ~183
   reasoning tokens as output, roughly 40% on top. Flash-Lite rejects the field
   with a 400, so support is learned per model at runtime instead of assumed.
 - Per-IP rate limit of 15 requests per 5 minutes (`RATE_LIMIT_PER_5MIN`),
@@ -171,14 +174,14 @@ Flash's price doubles). Flash remains the fallback.
 
 To cap spend on Google's side, set a monthly spend cap per project at
 aistudio.google.com/spend. **Note that a
-Cloud budget alerts but does not hard-stop billing** — the only true hard stop
+Cloud budget alerts but does not hard-stop billing**, the only true hard stop
 is removing the billing account from the project.
 
 ### Free-tier quota (important)
 
 The Gemini free tier allows **20 requests per day, per model, per project**
 (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`). That is enough to build
-and test, but not enough for a classroom — one student can exhaust it.
+and test, but not enough for a classroom; one student can exhaust it.
 
 Because the cap is *per model*, the primary/fallback pair gives roughly double
 the daily budget, and `api/chat.js` fails over immediately on a 429 rather than
@@ -214,11 +217,11 @@ so the document stops being cited immediately.
 Student conversations are kept per subject in `sessionStorage`, so they survive
 a refresh and switching subjects, and vanish when the tab closes. **Any
 conversation containing a staff answer is never stored**, and switching from
-Teacher back to Student closes the open chat — school computers are shared, and
+Teacher back to Student closes the open chat, school computers are shared, and
 grades must not be left behind for the next person.
 
 A subject with no uploaded documents says so and refuses to invent a syllabus or
-a date — that is deliberate. `npm run seed` loads made-up demo content for all
+a date, that is deliberate. `npm run seed` loads made-up demo content for all
 twelve subjects (a student syllabus and a staff notes file each) so there is
 something to demonstrate. It skips any file already uploaded under the same
 name, so it is safe to re-run. Delete the demo files from the teacher panel
@@ -226,7 +229,7 @@ once real ones are uploaded.
 
 ## Deploying
 
-Vercel auto-detects Vite and serves `api/*.js` as functions — no config file
+Vercel auto-detects Vite and serves `api/*.js` as functions, no config file
 needed. Set `GEMINI_API_KEY` and `TEACHER_PASSCODE` in the project's
 Environment Variables. Never commit `.env`.
 

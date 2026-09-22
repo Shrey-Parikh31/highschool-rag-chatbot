@@ -1,4 +1,4 @@
-// App.jsx — Middletown High academic assistant (frontend only).
+// App.jsx, Middletown High academic assistant (frontend only).
 //
 // The Gemini key lives ONLY on the server, in api/chat.js. Nothing secret is
 // imported here, because everything in this file ships to the browser.
@@ -27,7 +27,7 @@ const SUBJECTS = [
 
 // Tappable openers. A blank text box is the single biggest reason a student
 // closes the tab, so every chat starts with something concrete to press.
-// Shrey: tune the wording here — these should sound like your actual students.
+// Shrey: tune the wording here, these should sound like your actual students.
 const STARTERS = {
   math:      ["What's on the mid-term?", "Explain quadratics simply", "I'm stuck on trigonometry"],
   physics:   ["What's due next?", "Explain Newton's laws simply", "Help me study kinematics"],
@@ -104,7 +104,7 @@ async function streamFromAI(messages, subjectId, teacherPasscode, onDelta) {
  *
  * The file goes up as the raw request body with metadata in the query string,
  * so the server needs no multipart parser. The passcode rides in a header and
- * is re-verified server-side — this panel being on screen grants nothing.
+ * is re-verified server-side, this panel being on screen grants nothing.
  */
 function TeacherUpload({ passcode }) {
   const [subjectId, setSubjectId] = useState(SUBJECTS[0].id);
@@ -280,7 +280,7 @@ function TeacherUpload({ passcode }) {
 //
 // sessionStorage, not localStorage: school computers are shared, and a session
 // store is wiped when the tab closes. Conversations containing any staff answer
-// are never written at all — grades and teacher notes must not be left behind
+// are never written at all, grades and teacher notes must not be left behind
 // for the next person at the keyboard.
 const chatKey = (subjectId) => `chat:${subjectId}`;
 
@@ -301,7 +301,7 @@ function saveChat(subjectId, messages) {
     }
     sessionStorage.setItem(chatKey(subjectId), JSON.stringify(messages.filter((m) => !m.isError)));
   } catch {
-    /* storage full or blocked — persistence is a convenience, not a requirement */
+    /* storage full or blocked, persistence is a convenience, not a requirement */
   }
 }
 
@@ -425,7 +425,7 @@ export default function App() {
 
         .display { font-family: 'Fredoka', 'Nunito', sans-serif; letter-spacing: -0.01em; }
 
-        /* Visible keyboard focus everywhere — students tab through this. */
+        /* Visible keyboard focus everywhere, students tab through this. */
         :focus-visible { outline: 3px solid #6366F1; outline-offset: 2px; border-radius: 8px; }
 
         /* ── Nav ── */
@@ -636,7 +636,7 @@ export default function App() {
                   const code = new FormData(e.target).get("code").trim();
                   if (!code) return;
                   setPasscode(code);
-                  setRole("teacher");   // provisional — the server has the final say
+                  setRole("teacher");   // provisional, the server has the final say
                   setAskCode(false);
                 }}
                 style={{ display: "flex", gap: 6, alignItems: "center" }}
@@ -676,7 +676,7 @@ export default function App() {
                     setPasscode(""); setRole("student"); setAskCode(false);
                     return;
                   }
-                  // The pill is a claim, not a grant — api/chat.js verifies the
+                  // The pill is a claim, not a grant; api/chat.js verifies the
                   // passcode on every request and downgrades silently if it's wrong.
                   setAskCode(true);
                 }}
@@ -850,7 +850,7 @@ export default function App() {
                   </div>
                 ))}
 
-                {/* Starter chips — only before the student has asked anything */}
+                {/* Starter chips, only before the student has asked anything */}
                 {showStarters && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 2 }}>
                     {starters.map((q) => (

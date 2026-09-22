@@ -1,6 +1,6 @@
 // Shared request/response helpers for the API routes.
 // Both chat.js and upload.js need identical body parsing and an identical role
-// check — duplicating either would let the two drift apart, and the role check
+// check, duplicating either would let the two drift apart, and the role check
 // is the security boundary, so it gets exactly one implementation.
 
 export function json(res, status, payload) {
@@ -10,7 +10,7 @@ export function json(res, status, payload) {
 }
 
 export async function readBody(req) {
-  // Vercel populates req.body — as an object for parsed JSON, but as a raw
+  // Vercel populates req.body, as an object for parsed JSON, but as a raw
   // string on some content types. Handle both BEFORE touching the stream:
   // Vercel has already consumed it, so iterating it there never emits "end"
   // and the function hangs until the platform timeout.

@@ -1,4 +1,4 @@
-// Gemini File Search Stores — the retrieval layer.
+// Gemini File Search Stores, the retrieval layer.
 //
 // One store per (subject, scope). Scope is the access level:
 //   <subjectId>--shared  documents any student may see (syllabus, deadlines)
@@ -83,7 +83,7 @@ export async function ensureStore(apiKey, subjectId, scope) {
  *
  * This is the access boundary for retrieval: a student's request carries only
  * the shared store, so staff documents are not merely withheld from the answer
- * — they are never searched, and cannot appear in the model's context at all.
+ *, they are never searched, and cannot appear in the model's context at all.
  */
 export async function storesForRole(apiKey, subjectId, role) {
   const shared = await findStore(apiKey, subjectId, SCOPES.SHARED);
@@ -146,7 +146,7 @@ export async function listDocuments(apiKey, store) {
 
 /**
  * Delete one document. The caller must already have checked the document
- * belongs to a store it is allowed to touch — see api/documents.js.
+ * belongs to a store it is allowed to touch, see api/documents.js.
  * force=true also removes its indexed chunks, so it stops being cited at once.
  */
 export async function deleteDocument(apiKey, documentName) {

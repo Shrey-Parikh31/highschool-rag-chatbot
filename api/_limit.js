@@ -5,7 +5,7 @@
 // $0.002 per question, so a script left running overnight is the only realistic
 // way to blow a $5/month budget.
 //
-// ponytail: in-memory, so the window is per warm instance rather than global —
+// ponytail: in-memory, so the window is per warm instance rather than global,
 // Vercel may run several. That still turns "unbounded" into "bounded per
 // instance", which is the difference that matters. Move to Vercel KV only if
 // the bill says the instance count is actually defeating this.

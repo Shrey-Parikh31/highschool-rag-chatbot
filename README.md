@@ -220,6 +220,26 @@ conversation containing a staff answer is never stored**, and switching from
 Teacher back to Student closes the open chat, school computers are shared, and
 grades must not be left behind for the next person.
 
+### Demo syllabus PDFs
+
+`demo-syllabi/` holds a two page syllabus and a staff notes page per subject,
+written for Grade 12, Fall 2026 and modeled on real high school syllabi (course
+description, units with week ranges, key dates, materials, grading policy with a
+letter scale, late work, academic honesty). They are invented demo content.
+
+```bash
+py -3 scripts/make_syllabi.py                              rebuild the PDFs
+node scripts/publish-syllabi.mjs --remote <url>            upload all 12 subjects
+node scripts/publish-syllabi.mjs --remote <url> biology    one subject
+node scripts/publish-syllabi.mjs --remote <url> --dir path/to/real/files
+```
+
+Publishing uploads `<subject>-syllabus.pdf` for students and
+`<subject>-staff-notes.pdf` for staff, then deletes that subject's superseded
+`.txt` documents so the assistant cannot cite old and new side by side. It never
+deletes a PDF, so re-running cannot discard a real upload. `scripts/seed.js`
+remains for the older plain text demo content.
+
 A subject with no uploaded documents says so and refuses to invent a syllabus or
 a date, that is deliberate. `npm run seed` loads made-up demo content for all
 twelve subjects (a student syllabus and a staff notes file each) so there is

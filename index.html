@@ -4,7 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>school-agent</title>
+    <title>Middletown High Study Hub</title>
+    <script>
+      // Apply the saved theme before first paint, otherwise a dark-mode user
+      // gets a white flash on every load. App.jsx owns it from mount onwards.
+      try {
+        var c = localStorage.getItem('theme') || 'system';
+        var dark = c === 'dark' || (c === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

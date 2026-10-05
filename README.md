@@ -111,6 +111,33 @@ The shared passcode is a demo-grade stand-in for real accounts. Swapping it for
 per-user auth means changing how `role` is derived in `api/chat.js`, the
 boundary itself does not move.
 
+### Signing in is identity, not permission
+
+`src/auth.jsx` adds a sign-in page: Google, Microsoft, a demo email, or guest.
+It deliberately does **not** feed the access boundary. Who you are signed in as
+is kept in the browser and never sent to `/api/chat`, so no sign-in can widen
+what a request may read. Staff access is still the server-checked passcode
+described above, which is why there is no server-side session to forge.
+
+Google and Microsoft are real flows and need a public client id each. Without
+one the button says which variable is missing rather than failing on click.
+
+| Provider | Variable | Where to create it |
+|---|---|---|
+| Google | `VITE_GOOGLE_CLIENT_ID` | <https://console.cloud.google.com/apis/credentials> > Create credentials > OAuth client ID > Web application. Add your site to **Authorised JavaScript origins**. |
+| Microsoft | `VITE_MS_CLIENT_ID` | <https://portal.azure.com> > App registrations > New registration > platform **Single-page application**, then tick **ID tokens**. |
+
+Email is a stub on purpose: a real email login needs a mail sender to post the
+link, which is a paid service this project does not have. It signs you in under
+the name in the address and says so on screen.
+
+### Themes
+
+Light, dark and system, switched in the top bar and remembered in
+`localStorage`. Every colour in `App.jsx` resolves through a CSS custom
+property, so the two themes are one source of truth; `index.html` applies the
+saved choice before first paint so a dark-mode user never sees a white flash.
+
 ## Local setup
 
 ```bash
@@ -133,6 +160,8 @@ production without running a second process.
 | `GEMINI_MODEL` | no | Defaults to `gemini-flash-lite-latest` (cheapest; see cost section). |
 | `GEMINI_FALLBACK_MODEL` | no | Defaults to `gemini-flash-latest`. Used when the primary is busy, out of quota, or refuses the request. |
 | `TEACHER_PASSCODE` | no | Unlocks teacher mode. Unset means teacher mode is unreachable. |
+| `VITE_GOOGLE_CLIENT_ID` | no | Google sign-in. Public by design; unset hides the button behind a "needs configuring" state. |
+| `VITE_MS_CLIENT_ID` | no | Microsoft sign-in. Same. |
 
 ### On keeping models current
 
@@ -289,6 +318,10 @@ starts, so streaming mainly helps longer answers. The loading label says
 
 - Teacher access is one shared passcode, not per-user accounts. Everyone on
   staff uses the same secret and it cannot be revoked individually.
+- Sign-in is identity only. It gates the page, not the data, and the session
+  lives in the browser, so it proves nothing to the server by design.
+- The email option does not verify anything. It exists so the flow can be
+  demonstrated without paying for a mail sender.
 - Uploads are capped at 4MB by Vercel's request body limit. Large textbooks
   need splitting.
 - Local and deployed stores are separate, so a document uploaded in one is not

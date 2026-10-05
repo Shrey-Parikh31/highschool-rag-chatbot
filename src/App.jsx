@@ -327,6 +327,8 @@ export default function App() {
   // Inline instead of window.prompt(): native prompts are blocked in sandboxed
   // frames and look like a browser error in a live demo.
   const [askCode, setAskCode]   = useState(false);
+  const [codeError, setCodeError] = useState(null);
+  const [checking, setChecking]   = useState(false);
 
   const bottomRef   = useRef(null);
   const textareaRef = useRef(null);
@@ -631,12 +633,28 @@ export default function App() {
               // A real <form>: Enter-to-submit comes free from the platform, and
               // the button makes it discoverable instead of Enter-only.
               <form
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault();
                   const code = new FormData(e.target).get("code").trim();
-                  if (!code) return;
+                  if (!code || checking) return;
+                  setChecking(true);
+                  setCodeError(null);
+                  // Ask the server before flipping the UI, otherwise any string
+                  // looks accepted until the first answer comes back downgraded.
+                  // /api/documents is staff-only and spends no model tokens, so
+                  // it doubles as the passcode check. Only an explicit 403 is a
+                  // rejection: on any other failure the per-request check in
+                  // api/chat.js is still the real boundary.
+                  const res = await fetch(`/api/documents?subjectId=${SUBJECTS[0].id}`, {
+                    headers: { "x-teacher-passcode": code },
+                  }).catch(() => null);
+                  setChecking(false);
+                  if (res?.status === 403) {
+                    setCodeError("That passcode isn't right. Try again.");
+                    return;
+                  }
                   setPasscode(code);
-                  setRole("teacher");   // provisional, the server has the final say
+                  setRole("teacher");
                   setAskCode(false);
                 }}
                 style={{ display: "flex", gap: 6, alignItems: "center" }}
@@ -647,19 +665,27 @@ export default function App() {
                   autoFocus
                   placeholder="Staff passcode"
                   aria-label="Staff passcode"
-                  onKeyDown={(e) => { if (e.key === "Escape") setAskCode(false); }}
+                  onKeyDown={(e) => { if (e.key === "Escape") { setAskCode(false); setCodeError(null); } }}
+                  onChange={() => codeError && setCodeError(null)}
+                  aria-invalid={Boolean(codeError)}
+                  aria-describedby={codeError ? "code-error" : undefined}
                   style={{
                     width: 150, padding: "8px 14px", borderRadius: 999, fontSize: 15,
-                    fontFamily: "inherit", border: "2px solid #6366F1",
+                    fontFamily: "inherit", border: `2px solid ${codeError ? "#DC2626" : "#6366F1"}`,
                     background: "#fff", color: "#16161D", fontWeight: 600,
                   }}
                 />
-                <button type="submit" className="role-pill" style={{ border: "2px solid #4F46E5", background: "#4F46E5", color: "#fff" }}>
-                  Unlock
+                <button type="submit" disabled={checking} className="role-pill" style={{ border: "2px solid #4F46E5", background: checking ? "#A5B4FC" : "#4F46E5", color: "#fff", cursor: checking ? "wait" : "pointer" }}>
+                  {checking ? "Checking…" : "Unlock"}
                 </button>
-                <button type="button" className="role-pill" onClick={() => setAskCode(false)} style={{ border: "2px solid #E4DEF8", background: "#fff", color: "#6B6885" }}>
+                <button type="button" className="role-pill" onClick={() => { setAskCode(false); setCodeError(null); }} style={{ border: "2px solid #E4DEF8", background: "#fff", color: "#6B6885" }}>
                   Cancel
                 </button>
+                {codeError && (
+                  <span id="code-error" role="alert" style={{ fontSize: 14, fontWeight: 700, color: "#B91C1C" }}>
+                    {codeError}
+                  </span>
+                )}
               </form>
             )}
             {/* While authenticating, the pills are noise and overflow the nav. */}
@@ -676,8 +702,7 @@ export default function App() {
                     setPasscode(""); setRole("student"); setAskCode(false);
                     return;
                   }
-                  // The pill is a claim, not a grant; api/chat.js verifies the
-                  // passcode on every request and downgrades silently if it's wrong.
+                  setCodeError(null);
                   setAskCode(true);
                 }}
                 style={{

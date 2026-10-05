@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { buildSystemPrompt, isSubject, SUBJECT_NAMES } from "./_data.js";
 import { storeLabel, SCOPES } from "./_stores.js";
+import { verifyRole } from "./_http.js";
 
 // ── Subject validation ────────────────────────────────────────────────
 // "__proto__" resolves to Object.prototype on a plain lookup, which is truthy
@@ -58,4 +59,15 @@ for (const leaked of ["74", "Predicted weak area", "SOH-CAH-TOA", "Mar 5"]) {
   assert.ok(!teacher.includes(leaked), `course content is still hardcoded: ${leaked}`);
 }
 
-console.log("ok: staff stores are never in a student's scope, and no course data is hardcoded");
+// ── Passcode check ───────────────────────────────────────────
+// Only the exact passcode is staff. A near miss or a truthy non-string is not.
+process.env.TEACHER_PASSCODE = "teacher_3106";
+assert.equal(verifyRole("teacher_3106"), "teacher");
+for (const bad of ["tacher_3106", "teacher_3106 ", "Teacher_3106", "", "x", null, undefined, true, ["teacher_3106"]]) {
+  assert.equal(verifyRole(bad), "student", `verifyRole granted staff to ${String(bad)}`);
+}
+// An unset passcode closes teacher mode rather than opening it to everyone.
+delete process.env.TEACHER_PASSCODE;
+for (const any of ["teacher_3106", "", undefined]) assert.equal(verifyRole(any), "student");
+
+console.log("ok: staff stores are never in a student's scope, no course data is hardcoded, and only the exact passcode is staff");

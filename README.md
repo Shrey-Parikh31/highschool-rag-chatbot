@@ -294,8 +294,8 @@ per environment:
 
 | | Register this |
 |---|---|
-| Google, Authorised JavaScript origins | `https://highschool-rag-chatbot.vercel.app` and `http://localhost:5180` (no trailing slash, no path) |
-| Microsoft, SPA redirect URIs | `https://highschool-rag-chatbot.vercel.app/` and `http://localhost:5180/` (trailing slash: the app sends `origin + pathname`) |
+| Google, Authorised JavaScript origins | `https://highschool-rag-chatbot.vercel.app` and `http://localhost:5173` (no trailing slash, no path; add `http://localhost:5180` too if you use the Claude Code preview config) |
+| Microsoft, SPA redirect URIs | `https://highschool-rag-chatbot.vercel.app/` and `http://localhost:5173/` (trailing slash: the app sends `origin + pathname`) |
 
 Preview deployments get their own random hostname, which will not match either
 registration. Sign-in works on production and localhost; on a preview URL the

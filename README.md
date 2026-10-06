@@ -282,6 +282,25 @@ Vercel auto-detects Vite and serves `api/*.js` as functions, no config file
 needed. Set `GEMINI_API_KEY` and `TEACHER_PASSCODE` in the project's
 Environment Variables. Never commit `.env`.
 
+`VITE_` variables behave differently from the rest: they are read at **build**
+time and baked into the bundle, not read per request. Adding
+`VITE_GOOGLE_CLIENT_ID` or `VITE_MS_CLIENT_ID` in the Vercel dashboard
+therefore changes nothing until the next deploy, so redeploy after setting
+them. The sign-in buttons are the quickest check: they stop saying "needs
+VITE_..." once a build has picked the ids up.
+
+Both providers match the site's address exactly, so each needs its own entry
+per environment:
+
+| | Register this |
+|---|---|
+| Google, Authorised JavaScript origins | `https://highschool-rag-chatbot.vercel.app` and `http://localhost:5180` (no trailing slash, no path) |
+| Microsoft, SPA redirect URIs | `https://highschool-rag-chatbot.vercel.app/` and `http://localhost:5180/` (trailing slash: the app sends `origin + pathname`) |
+
+Preview deployments get their own random hostname, which will not match either
+registration. Sign-in works on production and localhost; on a preview URL the
+buttons appear but the provider refuses the origin.
+
 After the first deploy, seed that deployment's own stores (see "Stores are
 local to the environment that created them"):
 
